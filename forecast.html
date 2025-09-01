@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ephrata, PA Weather Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+        .fade-in {
+            animation: fadeIn 0.5s ease-in-out;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        /* Hide scrollbar for hourly forecast on smaller screens but allow scrolling */
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .no-scrollbar {
+            -ms-overflow-style: none; /* IE and Edge */
+            scrollbar-width: none; /* Firefox */
+        }
+    </style>
+</head>
+<body class="bg-slate-50 dark:bg-slate-900 text-gray-800 dark:text-gray-200 p-4 md:p-8 min-h-screen">
+
+    <!-- Main Container -->
+    <div class="w-full max-w-4xl mx-auto space-y-8">
+
+        <!-- Header -->
+        <header class="text-center py-4">
+            <h1 class="text-4xl md:text-5xl font-bold text-slate-900 dark:text-white">Ephrata, PA Weather</h1>
+            <h2 class="text-xl md:text-2xl font-medium mt-2 text-slate-600 dark:text-slate-400">Current Forecast</h2>
+        </header>
+
+        <!-- Loading state -->
+        <div id="loading" class="flex flex-col items-center justify-center p-12 rounded-2xl bg-white dark:bg-slate-800 shadow-xl">
+            <div class="animate-pulse text-gray-500 dark:text-gray-400">
+                <svg class="w-16 h-16 mx-auto text-blue-500 dark:text-blue-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 4m0 5c-.5 1.5-1 3-1.5 4.5"/>
+                </svg>
+                <p class="mt-4 text-xl">Fetching weather data...</p>
+            </div>
+        </div>
+
+        <!-- Error state -->
+        <div id="error-message" class="hidden text-center p-8 bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-700 text-red-800 dark:text-red-200 rounded-2xl shadow-lg fade-in">
+            <h3 class="text-xl font-bold">Error</h3>
+            <p class="mt-2">Failed to load weather data. Please try again later.</p>
+        </div>
+        
+        <!-- 5-Day Forecast Section -->
+        <section id="daily-forecast-section" class="hidden fade-in">
+            <h3 class="text-2xl md:text-3xl font-bold mb-4 text-slate-900 dark:text-white">5-Day Outlook</h3>
+            <div id="daily-forecast-container" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+                <!-- Daily forecast cards will be dynamically added here -->
+            </div>
+        </section>
+
+        <!-- Hourly Forecast Section -->
+        <section id="hourly-forecast-section" class="hidden fade-in">
+            <h3 class="text-2xl md:text-3xl font-bold mb-4 text-slate-900 dark:text-white">Hourly Forecast</h3>
+            <div id="hourly-forecast-container" class="flex flex-nowrap overflow-x-auto gap-4 p-2 -m-2 no-scrollbar">
+                <!-- Hourly forecast cards will be dynamically added here -->
+            </div>
+        </section>
+
+    </div>
+
+    <script>
+        const NWS_API_URL = "https://api.weather.gov";
+        const OFFICE = "CTP";
+        const GRID_X = 92;
+        const GRID_Y = 76;
+
+        const loadingElement = document.getElementById('loading');
+        const errorElement = document.getElementById('error-message');
+        const dailyContainer = document.getElementById('daily-forecast-container');
+        const dailySection = document.getElementById('daily-forecast-section');
+        const hourlyContainer = document.getElementById('hourly-forecast-container');
+        const hourlySection = document.getElementById('hourly-forecast-section');
+
+        // Function to show/hide elements
+        function showLoading() {
+            loadingElement.classList.remove('hidden');
+            errorElement.classList.add('hidden');
+            dailySection.classList.add('hidden');
+            hourlySection.classList.add('hidden');
+        }
+
+        function showContent() {
+            loadingElement.classList.add('hidden');
+            errorElement.classList.add('hidden');
+            dailySection.classList.remove('hidden');
+            hourlySection.classList.remove('hidden');
+        }
+
+        function showError(message) {
+            loadingElement.classList.add('hidden');
+            errorElement.classList.remove('hidden');
+            errorElement.querySelector('p').textContent = message;
+        }
+
+        // Helper function to format time
+        function formatTime(isoString) {
+            const date = new Date(isoString);
+            const hours = date.getHours();
+            const ampm = hours >= 12 ? 'PM' : 'AM';
+            const formattedHours = hours % 12 || 12;
+            return `${formattedHours} ${ampm}`;
+        }
+
+        // Helper function to format day
+        function formatDay(isoString) {
+            const date = new Date(isoString);
+            const today = new Date();
+            const tomorrow = new Date();
+            tomorrow.setDate(today.getDate() + 1);
+
+            if (date.toDateString() === today.toDateString()) {
+                return 'Today';
+            } else if (date.toDateString() === tomorrow.toDateString()) {
+                return 'Tomorrow';
+            } else {
+                return date.toLocaleDateString('en-US', { weekday: 'long' });
+            }
+        }
+        
+        async function fetchForecasts() {
+            showLoading();
+            dailyContainer.innerHTML = '';
+            hourlyContainer.innerHTML = '';
+
+            try {
+                // Fetch 5-day forecast
+                const dailyResponse = await fetch(`${NWS_API_URL}/gridpoints/${OFFICE}/${GRID_X},${GRID_Y}/forecast`, {
+                    headers: { 'User-Agent': 'EphrataWeatherDashboardApp, (myemail@example.com)' }
+                });
+                const dailyData = await dailyResponse.json();
+                if (!dailyResponse.ok) throw new Error(dailyData.detail || 'Failed to fetch daily forecast.');
+                
+                // Fetch hourly forecast
+                const hourlyResponse = await fetch(`${NWS_API_URL}/gridpoints/${OFFICE}/${GRID_X},${GRID_Y}/forecast/hourly`, {
+                    headers: { 'User-Agent': 'EphrataWeatherDashboardApp, (myemail@example.com)' }
+                });
+                const hourlyData = await hourlyResponse.json();
+                if (!hourlyResponse.ok) throw new Error(hourlyData.detail || 'Failed to fetch hourly forecast.');
+
+                // Render 5-day forecast
+                dailyData.properties.periods.forEach((period, index) => {
+                    // Only show first 10 periods, which should cover 5 days (day/night)
+                    if (index >= 10) return;
+
+                    const dayCard = `
+                        <div class="flex flex-col items-center text-center p-4 bg-white dark:bg-slate-800 rounded-xl shadow-md border border-slate-200 dark:border-slate-700 fade-in">
+                            <span class="text-lg font-bold">${period.name}</span>
+                            <img src="${period.icon}" alt="${period.shortForecast}" class="w-16 h-16 my-2 rounded-full">
+                            <p class="text-3xl font-extrabold text-blue-600 dark:text-blue-400">${period.temperature}°</p>
+                            <p class="mt-1 text-sm font-semibold opacity-75">${period.shortForecast}</p>
+                        </div>
+                    `;
+                    dailyContainer.innerHTML += dayCard;
+                });
+
+                // Render hourly forecast (next 24 hours)
+                hourlyData.properties.periods.slice(0, 24).forEach(period => {
+                    const time = formatTime(period.startTime);
+                    const hourlyCard = `
+                        <div class="flex flex-col items-center flex-shrink-0 text-center w-28 p-3 bg-white dark:bg-slate-800 rounded-xl shadow-md border border-slate-200 dark:border-slate-700 fade-in">
+                            <p class="text-sm font-bold">${time}</p>
+                            <img src="${period.icon}" alt="${period.shortForecast}" class="w-12 h-12 my-2 rounded-full">
+                            <p class="text-2xl font-extrabold text-blue-600 dark:text-blue-400">${period.temperature}°</p>
+                            <p class="mt-1 text-xs opacity-75">${period.shortForecast}</p>
+                            <p class="mt-1 text-xs opacity-75 font-semibold text-green-600 dark:text-green-400">${period.probabilityOfPrecipitation.value || 0}% chance</p>
+                        </div>
+                    `;
+                    hourlyContainer.innerHTML += hourlyCard;
+                });
+
+                showContent();
+
+            } catch (error) {
+                console.error("Failed to fetch weather data:", error);
+                showError(`Failed to load weather data. Details: ${error.message}`);
+            }
+        }
+
+        // Fetch forecasts when the page loads
+        document.addEventListener('DOMContentLoaded', fetchForecasts);
+        
+        // Refresh the data every 10 minutes (600000 ms)
+        setInterval(fetchForecasts, 600000);
+
+    </script>
+</body>
+</html>
