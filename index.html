@@ -373,6 +373,16 @@
 
     /* ── Snowfall chart container ─────────────────────────────── */
     .snow-chart-wrap { position: relative; height: 200px; margin-bottom: 8px; }
+  /* Weather icon circle */
+      .wx-ico { display:flex;align-items:center;justify-content:center;border-radius:14px;border:1px solid rgba(99,131,255,0.13);background:rgba(99,131,255,0.07);font-size:26px; }
+      /* RainViewer slider */
+      .rv-slider { -webkit-appearance:none;flex:1;height:5px;border-radius:3px;background:rgba(99,131,255,0.22);cursor:pointer; }
+      .rv-slider::-webkit-slider-thumb { -webkit-appearance:none;width:14px;height:14px;border-radius:50%;background:#6385ff;cursor:pointer; }
+      .rv-frame-tick { cursor:pointer;font-size:10px;color:#475569;padding:2px 4px;border-radius:3px;transition:all 0.15s; }
+      .rv-frame-tick:hover { color:#e2e8f0;background:rgba(99,131,255,0.2); }
+      .rv-frame-tick.active { color:#6385ff;font-weight:700;background:rgba(99,131,255,0.15); }
+      /* 3-chart layout */
+      .chart-wrap-3 { position:relative;height:165px; }
   </style>
 </head>
 <body>
@@ -432,6 +442,14 @@
         <span id="stat-cloud" class="text-sm font-bold text-white">--</span>
       </div>
       <div class="stat-pill">
+        <span class="text-xs text-slate-500 font-medium">Visibility</span>
+        <span id="stat-vis" class="text-sm font-bold text-white">--</span>
+      </div>
+      <div class="stat-pill">
+        <span class="text-xs text-slate-500 font-medium">Pressure</span>
+        <span id="stat-pressure" class="text-sm font-bold text-white">--</span>
+      </div>
+      <div class="stat-pill">
         <span class="text-xs text-slate-500 font-medium">Precip Type</span>
         <span id="stat-ptype" class="text-sm font-bold">--</span>
       </div>
@@ -449,7 +467,7 @@
         <span class="mr-1.5">📅</span>Forecast
       </button>
       <button class="tab-btn" data-tab="radar">
-        <span class="mr-1.5">📡</span>MRMS Radar
+        <span class="mr-1.5">📡</span>Radar
       </button>
       <button class="tab-btn" data-tab="snowfall">
         <span class="mr-1.5">❄️</span>Snowfall
@@ -496,66 +514,44 @@
     </section>
  
     <!-- Chart -->
-    <section class="glass p-5 fade-up" style="animation-delay:0.2s">
-      <p class="section-title">Temperature &amp; Precipitation Trend (48h)</p>
-      <div style="position:relative;height:240px">
-        <canvas id="forecast-chart"></canvas>
-      </div>
-      <!-- HRRR Precip Type legend -->
-      <div class="flex flex-wrap gap-2 mt-4">
-        <span class="text-xs text-slate-500 self-center">HRRR Precip Type:</span>
-        <span class="badge-rain text-xs px-2 py-0.5 rounded-full">💧 Rain</span>
-        <span class="badge-snow text-xs px-2 py-0.5 rounded-full">❄️ Snow</span>
-        <span class="badge-frzr text-xs px-2 py-0.5 rounded-full">🧊 Freezing Rain</span>
-        <span class="badge-mix text-xs px-2 py-0.5 rounded-full">🌀 Mix</span>
-        <span class="badge-tstm text-xs px-2 py-0.5 rounded-full">⛈ Thunder</span>
-      </div>
-    </section>
+            <section class="glass p-5 fade-up">
+          <p class="section-title">&#127777; Temperature &#183; 48h</p>
+          <div class="chart-wrap-3"><canvas id="chart-temp"></canvas></div>
+        </section>
+        <section class="glass p-5 fade-up">
+          <p class="section-title">&#128168; Wind Speed &#183; 48h</p>
+          <div class="chart-wrap-3"><canvas id="chart-wind"></canvas></div>
+        </section>
+        <section class="glass p-5 fade-up">
+          <p class="section-title">&#128336; Pressure &#183; 48h</p>
+          <div class="chart-wrap-3"><canvas id="chart-pressure"></canvas></div>
+        </section>
   </div>
  
   <!-- ═══════════════════════════════════════════════════════════
        TAB: RADAR
   ════════════════════════════════════════════════════════════ -->
   <div id="tab-radar" class="tab-panel space-y-4">
-    <section class="glass p-4 fade-up">
-      <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
-        <p class="section-title mb-0">MRMS Composite Reflectivity</p>
-        <div class="flex gap-2 flex-wrap">
-          <button onclick="setRadarProduct('nexrad-n0q-900913')" id="btn-refl"
-            class="tab-btn active text-xs px-3 py-1.5">Reflectivity</button>
-          <button onclick="setRadarProduct('q2-iak-900913')" id="btn-rate"
-            class="tab-btn text-xs px-3 py-1.5">Precip Rate</button>
-          <button onclick="refreshRadar()" class="tab-btn text-xs px-3 py-1.5">
-            🔄 Refresh
-          </button>
+          <div id="radar-map" class="map-container"></div>
+          <div id="rv-controls" class="mt-3 glass-light p-3 flex flex-col gap-2">
+            <div class="flex items-center gap-3">
+              <button id="rv-play-btn" onclick="toggleRainViewerPlay()"
+                class="tab-btn active text-xs px-3 py-1.5">&#9654; Play</button>
+              <input id="rv-slider" type="range" class="rv-slider" min="0" max="9" value="9"
+                oninput="setRainViewerFrame(parseInt(this.value))" />
+              <span id="rv-time-label" class="text-xs text-slate-400 whitespace-nowrap">&mdash;</span>
+            </div>
+            <div id="rv-ticks" class="flex flex-wrap gap-1"></div>
+          </div>
+          <div class="glass p-4">
+            <p class="text-xs text-slate-500 font-semibold uppercase tracking-wider mb-3">
+              Precip Type Outlook &mdash; <span id="radar-ptype-location"></span>
+            </p>
+            <div id="radar-ptype-grid" class="flex flex-wrap gap-2">
+              <span class="text-xs text-slate-500">Loading...</span>
+            </div>
+          </div>
         </div>
-      </div>
-      <div id="radar-map" class="map-container"></div>
- 
-      <!-- Reflectivity legend -->
-      <div class="mt-3 flex items-center gap-3">
-        <span class="text-xs text-slate-500 shrink-0">dBZ Scale:</span>
-        <div class="dbz-bar"></div>
-        <div class="flex text-xs text-slate-500 gap-2 shrink-0">
-          <span>5</span><span>25</span><span>45</span><span>65+</span>
-        </div>
-      </div>
- 
-      <!-- HRRR Precip Type for location -->
-      <div class="mt-3 glass-light p-3">
-        <p class="text-xs text-slate-500 font-semibold uppercase tracking-widest mb-2">
-          HRRR-Derived Precip Type · <span id="radar-ptype-location">Ephrata, PA</span>
-        </p>
-        <div id="radar-ptype-grid" class="flex flex-wrap gap-2">
-          <span class="text-xs text-slate-400 pulse-soft">Loading HRRR model data…</span>
-        </div>
-        <p class="text-xs text-slate-600 mt-2">
-          Precip type determined from HRRR model weather codes (WMO) via Open-Meteo API,
-          not from MRMS PrecipFlag, avoiding categorical flag ambiguities.
-        </p>
-      </div>
-    </section>
-  </div>
  
   <!-- ═══════════════════════════════════════════════════════════
        TAB: SNOWFALL
@@ -684,25 +680,31 @@
  
     <!-- Tornado / Wind / Hail breakdown (Day 1) -->
     <section class="glass p-5 fade-up">
-      <p class="section-title">SPC Hazard Probability Maps (Day 1)</p>
-      <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div class="glass-light p-3">
-          <p class="text-xs font-semibold text-slate-400 mb-2 text-center">🌪 Tornado</p>
-          <img src="https://www.spc.noaa.gov/products/outlook/day1probotlk_torn.gif"
-            alt="Tornado Prob" class="wx-image" onerror="this.style.display='none'" />
-        </div>
-        <div class="glass-light p-3">
-          <p class="text-xs font-semibold text-slate-400 mb-2 text-center">💨 Damaging Wind</p>
-          <img src="https://www.spc.noaa.gov/products/outlook/day1probotlk_wind.gif"
-            alt="Wind Prob" class="wx-image" onerror="this.style.display='none'" />
-        </div>
-        <div class="glass-light p-3">
-          <p class="text-xs font-semibold text-slate-400 mb-2 text-center">🌩 Large Hail</p>
-          <img src="https://www.spc.noaa.gov/products/outlook/day1probotlk_hail.gif"
-            alt="Hail Prob" class="wx-image" onerror="this.style.display='none'" />
-        </div>
-      </div>
-    </section>
+            <div class="flex items-center justify-between mb-3">
+              <p class="section-title mb-0">&#9832; SPC Hazard Probabilities</p>
+              <div class="flex gap-1">
+                <button onclick="setSpcHazardDay(1)" id="haz-d1" class="tab-btn active text-xs px-3 py-1.5">Day 1</button>
+                <button onclick="setSpcHazardDay(2)" id="haz-d2" class="tab-btn text-xs px-3 py-1.5">Day 2</button>
+              </div>
+            </div>
+            <div class="grid grid-cols-1 gap-4">
+              <div>
+                <p class="text-xs text-slate-500 mb-1">Tornado</p>
+                <img id="haz-torn" src="https://www.spc.noaa.gov/products/outlook/day1probotlk_torn.gif"
+                  alt="Tornado Probability" class="w-full rounded-lg" onerror="this.style.opacity='0.3'" />
+              </div>
+              <div>
+                <p class="text-xs text-slate-500 mb-1">Wind</p>
+                <img id="haz-wind" src="https://www.spc.noaa.gov/products/outlook/day1probotlk_wind.gif"
+                  alt="Wind Probability" class="w-full rounded-lg" onerror="this.style.opacity='0.3'" />
+              </div>
+              <div>
+                <p class="text-xs text-slate-500 mb-1">Hail</p>
+                <img id="haz-hail" src="https://www.spc.noaa.gov/products/outlook/day1probotlk_hail.gif"
+                  alt="Hail Probability" class="w-full rounded-lg" onerror="this.style.opacity='0.3'" />
+              </div>
+            </div>
+          </section>
  
     <!-- Fire Weather -->
     <section class="glass p-5 fade-up">
@@ -815,7 +817,7 @@ let ST = {
   spcDay: 1,
   maps: { radar: null, conditions: null },
   layers: { radar: null },
-  chart: null,
+  tempChart: null, windChart: null, pressChart: null,
   snowChart: null,
   mapsInited: { radar: false, conditions: false },
   stationMarkers: [],
@@ -961,26 +963,32 @@ function nwsIconUrl(url, size='small') {
 // SEARCH / GEOCODING
 // ============================================================
 async function searchLocations(query) {
-  const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query + ' USA')}&format=json&limit=6&countrycodes=us&addressdetails=1`;
-  const r = await fetch(url, {
-    headers: { 'Accept-Language': 'en', 'User-Agent': 'WeatherApp/1.0' }
-  });
-  if (!r.ok) return [];
-  const data = await r.json();
-  return data.map(item => {
-    const addr = item.address || {};
-    const city = addr.city || addr.town || addr.village || addr.hamlet || addr.county || item.display_name.split(',')[0];
-    const state = addr.state || '';
-    const county = addr.county || '';
-    const name = state ? `${city}, ${state}` : city;
-    const subtitle = [county, state].filter(Boolean).join(' \u00b7 ');
-    return {
-      name, subtitle,
-      lat: parseFloat(item.lat),
-      lon: parseFloat(item.lon),
-      display: item.display_name,
-    };
-  });
+  const url = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(query)}&count=8&language=en&format=json`;
+  try {
+    const r = await fetch(url);
+    if (!r.ok) return [];
+    const data = await r.json();
+    if (!data.results || !data.results.length) return [];
+    return data.results
+      .filter(item => item.country_code === 'US')
+      .map(item => {
+        const state = item.admin1 || '';
+        const county = item.admin2 || '';
+        const city = item.name || '';
+        return {
+          name: city,
+          state,
+          county,
+          display: county ? `${city}, ${county}, ${state}` : `${city}, ${state}`,
+          lat: item.latitude,
+          lon: item.longitude,
+          timezone: item.timezone || 'America/New_York',
+        };
+      });
+  } catch(e) {
+    console.warn('Geocoding failed:', e);
+    return [];
+  }
 }
 
 async function getNWSPointsForLocation(lat, lon) {
@@ -1167,18 +1175,17 @@ async function useCurrentLocation() {
     async pos => {
       const lat = pos.coords.latitude;
       const lon = pos.coords.longitude;
-      // Reverse geocode with Nominatim
+      // Reverse geocode with Open-Meteo
       try {
-        const r = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json`, {
-          headers: { 'User-Agent': 'WeatherApp/1.0', 'Accept-Language': 'en' }
-        });
+        const r = await fetch(`https://geocoding-api.open-meteo.com/v1/reverse?latitude=${lat}&longitude=${lon}&language=en`);
         const d = await r.json();
-        const addr = d.address || {};
-        const city = addr.city || addr.town || addr.village || addr.county || 'Unknown';
-        const state = addr.state || '';
-        const county = addr.county || '';
+        const result = d.results && d.results[0];
+        const city = result ? (result.name || 'Your Location') : 'Your Location';
+        const state = result ? (result.admin1 || '') : '';
+        const county = result ? (result.admin2 || '') : '';
         const name = state ? `${city}, ${state}` : city;
         const subtitle = `${lat.toFixed(4)}\u00b0N ${Math.abs(lon).toFixed(4)}\u00b0W${county ? ' \u00b7 ' + county : ''}`;
+        if (result && result.timezone) CFG.timezone = result.timezone;
         await selectLocation(lat, lon, name, subtitle);
       } catch(e) {
         const name = `${lat.toFixed(3)}\u00b0N, ${Math.abs(lon).toFixed(3)}\u00b0W`;
@@ -1476,8 +1483,8 @@ async function fetchOpenMeteo() {
   const params = new URLSearchParams({
     latitude: CFG.lat,
     longitude: CFG.lon,
-    current: 'temperature_2m,apparent_temperature,weather_code,wind_speed_10m,wind_direction_10m,relative_humidity_2m,cloud_cover,precipitation',
-    hourly: 'temperature_2m,apparent_temperature,weather_code,precipitation,rain,snowfall,cloud_cover,wind_speed_10m,wind_direction_10m,visibility,cape,dew_point_2m',
+    current: 'temperature_2m,apparent_temperature,weather_code,wind_speed_10m,wind_direction_10m,relative_humidity_2m,cloud_cover,precipitation,surface_pressure',
+    hourly: 'temperature_2m,apparent_temperature,weather_code,precipitation,rain,snowfall,cloud_cover,wind_speed_10m,wind_direction_10m,visibility,cape,dew_point_2m,surface_pressure',
     temperature_unit: 'fahrenheit',
     wind_speed_unit: 'mph',
     precipitation_unit: 'inch',
@@ -1559,10 +1566,61 @@ function renderHeader(om) {
   ptEl.textContent = precipTypeLabel(ptype);
   ptEl.className = `text-sm font-bold px-2 py-0.5 rounded-full ${precipTypeBadgeClass(ptype)}`;
 
+  // Visibility: first hourly value, cap at 10mi
+  const h = om.hourly;
+  const nowIdx = h ? h.time.findIndex(t => new Date(t) >= new Date()) : -1;
+  const visM = h && h.visibility && nowIdx >= 0 ? h.visibility[nowIdx] : null;
+  const visMi = visM != null ? Math.min(10, Math.round(visM * 0.000621371 * 10) / 10) : null;
+  const visEl = document.getElementById('stat-vis');
+  if (visEl) visEl.textContent = visMi != null ? `${visMi} mi` : '--';
+
+  // Pressure: current surface_pressure hPa -> inHg
+  const pressHpa = c.surface_pressure != null ? c.surface_pressure : null;
+  const pressInHg = pressHpa != null ? Math.round(pressHpa * 0.02953 * 100) / 100 : null;
+  const pressEl = document.getElementById('stat-pressure');
+  if (pressEl) pressEl.textContent = pressInHg != null ? `${pressInHg} inHg` : '--';
+
   const now = new Date();
   const upd = now.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
   document.getElementById('stat-updated').textContent = upd;
   document.getElementById('footer-updated').textContent = `Updated ${upd}`;
+}
+
+// ============================================================
+// WEATHER ICON HELPERS
+// ============================================================
+function getWeatherIcon(wmoCode, isDaytime) {
+  const c = wmoCode;
+  if (c === 0) return isDaytime ? '&#9728;&#65039;' : '&#127769;';
+  if (c <= 2) return isDaytime ? '&#9925;' : '&#127769;';
+  if (c === 3) return '&#9729;&#65039;';
+  if (c <= 49) return '&#127787;&#65039;';
+  if (c <= 59) return '&#127746;&#65039;';
+  if (c <= 67) return '&#127751;&#65039;';
+  if (c <= 69) return '&#129514;';
+  if (c <= 77) return '&#127752;&#65039;';
+  if (c <= 82) return '&#127751;&#65039;';
+  if (c <= 86) return '&#127752;&#65039;';
+  if (c <= 99) return '&#9889;';
+  return isDaytime ? '&#9728;&#65039;' : '&#127769;';
+}
+
+function getIconFromForecast(shortForecast, isDaytime) {
+  const f = (shortForecast || '').toLowerCase();
+  if (/thunder|tstm/.test(f)) return '&#9889;';
+  if (/blizzard/.test(f)) return '&#127781;&#65039;';
+  if (/ice|sleet|freez/.test(f)) return '&#129514;';
+  if (/snow|flurr/.test(f)) return '&#127752;&#65039;';
+  if (/drizzle/.test(f)) return '&#127746;&#65039;';
+  if (/shower|rain/.test(f)) return '&#127751;&#65039;';
+  if (/fog|mist|haz/.test(f)) return '&#127787;&#65039;';
+  if (/wind/.test(f)) return '&#128168;';
+  if (/overcast/.test(f)) return '&#9729;&#65039;';
+  if (/mostly cloudy|cloudy/.test(f)) return '&#9729;&#65039;';
+  if (/partly/.test(f)) return isDaytime ? '&#9925;' : '&#127764;&#65039;';
+  if (/mostly clear|mostly sunny/.test(f)) return isDaytime ? '&#9728;&#65039;' : '&#127769;';
+  if (/clear|sunny/.test(f)) return isDaytime ? '&#9728;&#65039;' : '&#127769;';
+  return isDaytime ? '&#9728;&#65039;' : '&#127769;';
 }
 
 // ============================================================
@@ -1591,14 +1649,14 @@ function renderDailyForecast(periods) {
     const loTemp = pair.night?.temperature ?? '\u2014';
     const hiColor = tempColor(pair.day?.temperature);
     const loColor = tempColor(pair.night?.temperature);
-    const icon = nwsIconUrl(main.icon, 'medium');
+    const wxIcon = getIconFromForecast(main.shortForecast, main.isDaytime !== false);
     const pop = main.probabilityOfPrecipitation?.value ?? 0;
     const pidx = idx;
 
     return `<div class="day-card fade-up" style="animation-delay:${idx*0.04}s"
         onclick="showDailyDetail(ST.nwsForecast[${pidx*2 + (days[pidx]?.day ? 0 : 0)}], ST.openMeteo?.hourly)">
       <p class="text-xs font-bold text-slate-400 uppercase tracking-wider">${dayLabel}</p>
-      <img src="${icon}" alt="${main.shortForecast}" class="w-14 h-14 my-2 rounded-xl" />
+      <div class="wx-ico w-14 h-14 my-2">${wxIcon}</div>
       <div class="flex gap-2 items-baseline">
         <span class="text-xl font-extrabold" style="color:${hiColor}">${hiTemp}\u00b0</span>
         ${loTemp !== '\u2014' ? `<span class="text-sm font-semibold" style="color:${loColor}">${loTemp}\u00b0</span>` : ''}
@@ -1632,7 +1690,7 @@ function renderHourlyScroll(periods, omHourly) {
     const tempF = p.temperature;
     const tc = tempColor(tempF);
     const pop = p.probabilityOfPrecipitation?.value ?? 0;
-    const icon = nwsIconUrl(p.icon, 'small');
+    const wxIcon = getIconFromForecast(p.shortForecast, p.isDaytime !== false);
     const omKey = p.startTime.slice(0, 13);
     const om = omLookup[omKey] || {};
     const ptype = om.ptype || 'none';
@@ -1642,7 +1700,7 @@ function renderHourlyScroll(periods, omHourly) {
     return `<div class="hourly-card fade-up" style="animation-delay:${Math.min(idx,12)*0.02}s"
         onclick="showHourlyDetail(ST.nwsHourly[${idx}], ST.openMeteo?.hourly)">
       <p class="text-xs font-bold text-slate-400">${time}</p>
-      <img src="${icon}" alt="${p.shortForecast}" class="w-10 h-10 rounded-lg" />
+      <div class="wx-ico w-10 h-10" style="font-size:20px">${wxIcon}</div>
       <p class="text-base font-extrabold" style="color:${tc}">${tempF}\u00b0</p>
       ${pop > 0 ? `<p class="text-xs text-cyan-400 font-semibold">${pop}%</p>` : ''}
       ${ptLabel ? `<span class="text-xs px-1.5 py-0.5 rounded-full ${badgeCls} leading-tight">${ptLabel}</span>` : ''}
@@ -1653,11 +1711,10 @@ function renderHourlyScroll(periods, omHourly) {
 // ============================================================
 // RENDER CHART (Chart.js \u2013 48h temp + precip)
 // ============================================================
-function renderForecastChart(om) {
-  const ctx = document.getElementById('forecast-chart');
+function renderTempChart(om) {
+  const ctx = document.getElementById('chart-temp');
   if (!ctx || !om) return;
-  if (ST.chart) { ST.chart.destroy(); ST.chart = null; }
-
+  if (ST.tempChart) { ST.tempChart.destroy(); ST.tempChart = null; }
   const h = om.hourly;
   const slice = 48;
   const labels = h.time.slice(0, slice).map(t => {
@@ -1666,36 +1723,15 @@ function renderForecastChart(om) {
       ? d.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'})
       : fmtTime(t);
   });
-
   const temps = h.temperature_2m.slice(0, slice);
-  const precips = h.precipitation.slice(0, slice);
-  const codes = h.weather_code.slice(0, slice);
-
-  const precipColors = precips.map((v, i) => {
-    if (v <= 0) return 'rgba(0,0,0,0)';
-    const pt = wmoToPrecipType(codes[i]);
-    const clrs = {
-      rain: 'rgba(6,182,212,0.6)', snow: 'rgba(148,163,184,0.65)',
-      frzr: 'rgba(125,211,252,0.65)', mix: 'rgba(139,92,246,0.65)',
-      tstm: 'rgba(250,204,21,0.65)', none: 'rgba(99,131,255,0.3)',
-    };
-    return clrs[pt] || 'rgba(99,131,255,0.4)';
-  });
-
-  ST.chart = new Chart(ctx, {
+  const feels = h.apparent_temperature.slice(0, slice);
+  ST.tempChart = new Chart(ctx, {
+    type: 'line',
     data: {
       labels,
       datasets: [
-        {
-          type: 'line', label: 'Temperature (\u00b0F)', data: temps,
-          borderColor: 'rgba(249,115,22,0.85)', backgroundColor: 'rgba(249,115,22,0.06)',
-          borderWidth: 2, pointRadius: 0, pointHoverRadius: 4, tension: 0.4,
-          fill: true, yAxisID: 'yTemp', order: 1,
-        },
-        {
-          type: 'bar', label: 'Precipitation (in)', data: precips,
-          backgroundColor: precipColors, borderRadius: 3, yAxisID: 'yPrecip', order: 2,
-        },
+        { label: 'Temp (F)', data: temps, borderColor: 'rgba(249,115,22,0.9)', backgroundColor: 'rgba(249,115,22,0.08)', borderWidth: 2, pointRadius: 0, tension: 0.4, fill: true },
+        { label: 'Feels Like (F)', data: feels, borderColor: 'rgba(139,92,246,0.7)', backgroundColor: 'rgba(139,92,246,0.04)', borderWidth: 1.5, pointRadius: 0, tension: 0.4, borderDash: [4,3] },
       ],
     },
     options: {
@@ -1703,21 +1739,86 @@ function renderForecastChart(om) {
       interaction: { mode: 'index', intersect: false },
       plugins: {
         legend: { labels: { color: '#94a3b8', font: { family: 'Inter', size: 11 } } },
-        tooltip: {
-          backgroundColor: 'rgba(8,12,35,0.92)', borderColor: 'rgba(99,131,255,0.25)',
-          borderWidth: 1, titleColor: '#e2e8f0', bodyColor: '#94a3b8', padding: 10,
-          callbacks: {
-            label: ctx => {
-              if (ctx.dataset.yAxisID === 'yTemp') return ` ${Math.round(ctx.parsed.y)}\u00b0F`;
-              return ctx.parsed.y > 0 ? ` ${ctx.parsed.y.toFixed(2)}"` : null;
-            },
-          },
-        },
+        tooltip: { backgroundColor: 'rgba(8,12,35,0.92)', borderColor: 'rgba(99,131,255,0.25)', borderWidth: 1, titleColor: '#e2e8f0', bodyColor: '#94a3b8', padding: 10,
+          callbacks: { label: ctx => ` ${Math.round(ctx.parsed.y)}F` } },
       },
       scales: {
         x: { ticks: { color: '#475569', font: { size: 10 }, maxRotation: 0, maxTicksLimit: 12 }, grid: { color: 'rgba(255,255,255,0.04)' } },
-        yTemp: { position: 'left', ticks: { color: '#f97316', font: { size: 11 }, callback: v => `${v}\u00b0` }, grid: { color: 'rgba(255,255,255,0.04)' } },
-        yPrecip: { position: 'right', min: 0, ticks: { color: '#22d3ee', font: { size: 10 }, callback: v => v > 0 ? `${v}"` : '' }, grid: { display: false } },
+        y: { ticks: { color: '#f97316', font: { size: 11 }, callback: v => v + 'F' }, grid: { color: 'rgba(255,255,255,0.04)' } },
+      },
+    },
+  });
+}
+
+function renderWindChart(om) {
+  const ctx = document.getElementById('chart-wind');
+  if (!ctx || !om) return;
+  if (ST.windChart) { ST.windChart.destroy(); ST.windChart = null; }
+  const h = om.hourly;
+  const slice = 48;
+  const labels = h.time.slice(0, slice).map(t => {
+    const d = new Date(t);
+    return d.getHours() === 0
+      ? d.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'})
+      : fmtTime(t);
+  });
+  const winds = h.wind_speed_10m.slice(0, slice);
+  ST.windChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        { label: 'Wind (mph)', data: winds, borderColor: 'rgba(6,182,212,0.9)', backgroundColor: 'rgba(6,182,212,0.08)', borderWidth: 2, pointRadius: 0, tension: 0.4, fill: true },
+      ],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { labels: { color: '#94a3b8', font: { family: 'Inter', size: 11 } } },
+        tooltip: { backgroundColor: 'rgba(8,12,35,0.92)', borderColor: 'rgba(99,131,255,0.25)', borderWidth: 1, titleColor: '#e2e8f0', bodyColor: '#94a3b8', padding: 10 },
+      },
+      scales: {
+        x: { ticks: { color: '#475569', font: { size: 10 }, maxRotation: 0, maxTicksLimit: 12 }, grid: { color: 'rgba(255,255,255,0.04)' } },
+        y: { min: 0, ticks: { color: '#22d3ee', font: { size: 11 }, callback: v => v + 'mph' }, grid: { color: 'rgba(255,255,255,0.04)' } },
+      },
+    },
+  });
+}
+
+function renderPressureChart(om) {
+  const ctx = document.getElementById('chart-pressure');
+  if (!ctx || !om) return;
+  if (ST.pressChart) { ST.pressChart.destroy(); ST.pressChart = null; }
+  const h = om.hourly;
+  if (!h.surface_pressure) return;
+  const slice = 48;
+  const labels = h.time.slice(0, slice).map(t => {
+    const d = new Date(t);
+    return d.getHours() === 0
+      ? d.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'})
+      : fmtTime(t);
+  });
+  const press = h.surface_pressure.slice(0, slice).map(v => v != null ? Math.round(v * 0.02953 * 100) / 100 : null);
+  ST.pressChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        { label: 'Pressure (inHg)', data: press, borderColor: 'rgba(99,131,255,0.9)', backgroundColor: 'rgba(99,131,255,0.08)', borderWidth: 2, pointRadius: 0, tension: 0.4, fill: true },
+      ],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { labels: { color: '#94a3b8', font: { family: 'Inter', size: 11 } } },
+        tooltip: { backgroundColor: 'rgba(8,12,35,0.92)', borderColor: 'rgba(99,131,255,0.25)', borderWidth: 1, titleColor: '#e2e8f0', bodyColor: '#94a3b8', padding: 10,
+          callbacks: { label: ctx => ` ${ctx.parsed.y}"` } },
+      },
+      scales: {
+        x: { ticks: { color: '#475569', font: { size: 10 }, maxRotation: 0, maxTicksLimit: 12 }, grid: { color: 'rgba(255,255,255,0.04)' } },
+        y: { ticks: { color: '#6385ff', font: { size: 11 }, callback: v => v + '"' }, grid: { color: 'rgba(255,255,255,0.04)' } },
       },
     },
   });
@@ -1756,10 +1857,10 @@ function renderSnowfallChart(values) {
       ? d.toLocaleDateString('en-US', { weekday:'short', month:'short', day:'numeric' })
       : fmtTime(v.validTime.split('/')[0]);
   });
-  // NWS returns mm \u2014 convert to inches
+  // NWS returns meters (wmoUnit:m) \u2014 convert to inches
   const amounts = future.map(v => {
-    const mm = v.value ?? 0;
-    return Math.max(0, parseFloat((mm / 25.4).toFixed(2)));
+    const meters = v.value ?? 0;
+    return Math.max(0, parseFloat((meters * 39.3701).toFixed(2)));
   });
 
   const hasSnow = amounts.some(a => a > 0);
@@ -1807,6 +1908,24 @@ function renderSnowfallChart(values) {
 // ============================================================
 // RADAR MAP
 // ============================================================
+// ============================================================
+// RAINVIEWER RADAR
+// ============================================================
+let RV = { frames: [], host: '', currentIdx: 9, playing: false, playTimer: null, layer: null };
+
+async function fetchRainViewerFrames() {
+  try {
+    const r = await fetch('https://api.rainviewer.com/public/weather-maps.json');
+    const data = await r.json();
+    RV.host = data.host;
+    RV.frames = (data.radar && data.radar.past ? data.radar.past : []).slice(-10);
+    return true;
+  } catch(e) {
+    console.warn('RainViewer fetch failed:', e);
+    return false;
+  }
+}
+
 function initRadarMap() {
   if (ST.mapsInited.radar) return;
   ST.mapsInited.radar = true;
@@ -1815,64 +1934,99 @@ function initRadarMap() {
   ST.maps.radar = map;
 
   L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-    attribution: '\u00a9 OpenStreetMap contributors \u00a9 CARTO',
+    attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
     subdomains: 'abcd', maxZoom: 19,
   }).addTo(map);
 
-  ST.layers.radar = L.tileLayer(
-    `https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/${ST.radarProduct}/{z}/{x}/{y}.png`,
-    { opacity: 0.75, attribution: 'IEM MRMS/NEXRAD', maxZoom: 19 }
-  ).addTo(map);
-
-  L.tileLayer('https://mesonet.agron.iastate.edu/c/tile.py/1.0.0/usstates/{z}/{x}/{y}.png',
-    { opacity: 0.6, attribution: 'IEM', maxZoom: 19 }
-  ).addTo(map);
-
-  ST._radarMarker = L.circleMarker([CFG.lat, CFG.lon], {
+  L.circleMarker([CFG.lat, CFG.lon], {
     radius: 8, color: '#4f7bff', fillColor: '#2563eb', fillOpacity: 0.85, weight: 2
-  }).addTo(map)
-    .bindPopup(`<b style="color:#e2e8f0">${CFG.locationName}</b><br><span style="color:#94a3b8">${CFG.lat.toFixed(4)}\u00b0N ${Math.abs(CFG.lon).toFixed(4)}\u00b0W</span>`);
+  }).addTo(map).bindPopup('<b style="color:#e2e8f0">' + CFG.locationName + '</b>');
 
-  const ts = L.control({ position: 'bottomleft' });
-  ts.onAdd = () => {
-    const d = document.createElement('div');
-    d.style.cssText = 'background:rgba(5,10,25,0.7);color:#64748b;padding:3px 7px;font-size:10px;border-radius:5px;font-family:Inter,sans-serif';
-    d.id = 'radar-timestamp';
-    d.innerHTML = 'MRMS data via Iowa Environmental Mesonet';
-    return d;
-  };
-  ts.addTo(map);
+  fetchRainViewerFrames().then(ok => {
+    if (ok && RV.frames.length) {
+      RV.currentIdx = RV.frames.length - 1;
+      setRainViewerFrame(RV.currentIdx);
+      updateRVSlider();
+      updateRVTicks();
+    }
+  });
 }
 
-function setRadarProduct(product) {
-  ST.radarProduct = product;
-  document.getElementById('btn-refl').classList.toggle('active', product === 'nexrad-n0q-900913');
-  document.getElementById('btn-rate').classList.toggle('active', product === 'q2-iak-900913');
-  if (ST.layers.radar && ST.maps.radar) {
-    ST.maps.radar.removeLayer(ST.layers.radar);
-    ST.layers.radar = L.tileLayer(
-      `https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/${product}/{z}/{x}/{y}.png`,
-      { opacity: 0.75, attribution: 'IEM MRMS', maxZoom: 19 }
-    ).addTo(ST.maps.radar);
+function setRainViewerFrame(idx) {
+  if (!RV.frames.length || !ST.maps.radar) return;
+  idx = Math.max(0, Math.min(RV.frames.length - 1, idx));
+  RV.currentIdx = idx;
+  const frame = RV.frames[idx];
+  if (RV.layer) ST.maps.radar.removeLayer(RV.layer);
+  RV.layer = L.tileLayer(
+    RV.host + frame.path + '/256/{z}/{x}/{y}/2/1_1.png',
+    { opacity: 0.75, attribution: 'RainViewer', maxZoom: 19, tileSize: 256 }
+  ).addTo(ST.maps.radar);
+  const d = new Date(frame.time * 1000);
+  const lbl = document.getElementById('rv-time-label');
+  if (lbl) lbl.textContent = d.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
+  const slider = document.getElementById('rv-slider');
+  if (slider) slider.value = idx;
+  document.querySelectorAll('.rv-frame-tick').forEach(function(el, i) {
+    el.classList.toggle('active', i === idx);
+  });
+}
+
+function toggleRainViewerPlay() {
+  const btn = document.getElementById('rv-play-btn');
+  if (RV.playing) {
+    clearInterval(RV.playTimer);
+    RV.playing = false;
+    if (btn) btn.innerHTML = '&#9654; Play';
+  } else {
+    RV.playing = true;
+    if (btn) btn.innerHTML = '&#9646;&#9646; Pause';
+    RV.playTimer = setInterval(function() {
+      var next = RV.currentIdx + 1;
+      if (next >= RV.frames.length) next = 0;
+      setRainViewerFrame(next);
+    }, 500);
   }
 }
 
-function refreshRadar() {
-  if (!ST.layers.radar || !ST.maps.radar) return;
-  const cur = ST.radarProduct;
-  ST.maps.radar.removeLayer(ST.layers.radar);
-  ST.layers.radar = L.tileLayer(
-    `https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/${cur}/{z}/{x}/{y}.png?_=${Date.now()}`,
-    { opacity: 0.75, attribution: 'IEM MRMS', maxZoom: 19 }
-  ).addTo(ST.maps.radar);
+function updateRVSlider() {
+  const slider = document.getElementById('rv-slider');
+  if (slider) {
+    slider.max = RV.frames.length - 1;
+    slider.value = RV.currentIdx;
+  }
 }
+
+function updateRVTicks() {
+  const ticksEl = document.getElementById('rv-ticks');
+  if (!ticksEl || !RV.frames.length) return;
+  ticksEl.innerHTML = RV.frames.map(function(f, i) {
+    const d = new Date(f.time * 1000);
+    const lbl = d.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
+    return '<span class="rv-frame-tick' + (i === RV.currentIdx ? ' active' : '') + '" onclick="setRainViewerFrame(' + i + ')">' + lbl + '</span>';
+  }).join('');
+}
+
+async function refreshRainViewer() {
+  const ok = await fetchRainViewerFrames();
+  if (ok && RV.frames.length) {
+    RV.currentIdx = RV.frames.length - 1;
+    setRainViewerFrame(RV.currentIdx);
+    updateRVSlider();
+    updateRVTicks();
+  }
+}
+
+// Legacy stubs (IEM radar removed)
+function setRadarProduct() {}
+function refreshRadar() {}
 
 // ============================================================
 // RADAR PRECIP TYPE GRID
 // ============================================================
 function renderRadarPtypeGrid(om) {
   const container = document.getElementById('radar-ptype-grid');
-  if (!om) { container.innerHTML = '<span class="text-xs text-red-400">HRRR data unavailable</span>'; return; }
+  if (!om) { if(container) container.innerHTML = '<span class="text-xs text-red-400">HRRR data unavailable</span>'; return; }
 
   const now = new Date();
   const h = om.hourly;
@@ -1884,43 +2038,22 @@ function renderRadarPtypeGrid(om) {
     const ptype = wmoToPrecipType(h.weather_code[i]);
     const label = precipTypeLabel(ptype);
     const badge = precipTypeBadgeClass(ptype);
-    const precip = h.precipitation[i] ?? 0;
-    pills.push(`<div class="glass-light px-3 py-2 text-center min-w-16">
-      <p class="text-xs font-bold text-slate-400">${fmtTime(h.time[i])}</p>
-      <span class="text-xs px-1.5 py-0.5 rounded-full ${badge}">${label}</span>
-      ${precip > 0 ? `<p class="text-xs text-cyan-400 mt-1">${precip.toFixed(2)}"</p>` : ''}
-    </div>`);
+    const precip = h.precipitation[i] != null ? h.precipitation[i] : 0;
+    pills.push('<div class="glass-light px-3 py-2 text-center min-w-16">' +
+      '<p class="text-xs font-bold text-slate-400">' + fmtTime(h.time[i]) + '</p>' +
+      '<span class="text-xs px-1.5 py-0.5 rounded-full ' + badge + '">' + label + '</span>' +
+      (precip > 0 ? '<p class="text-xs text-cyan-400 mt-1">' + precip.toFixed(2) + '"</p>' : '') +
+      '</div>');
   }
 
   const locationLabel = document.getElementById('radar-ptype-location');
   if (locationLabel) locationLabel.textContent = CFG.locationName;
 
-  container.innerHTML = pills.length
-    ? `<p class="text-xs text-slate-500 w-full mb-1">Next 12 hours:</p>` + pills.join('')
+  if(container) container.innerHTML = pills.length
+    ? '<p class="text-xs text-slate-500 w-full mb-1">Next 12 hours:</p>' + pills.join('')
     : '<span class="text-xs text-slate-500">No precipitation expected</span>';
 }
 
-// ============================================================
-// WPC SNOWFALL MAP DAY SWITCHER (replaces old NOHRSC)
-// ============================================================
-function setSnowMapDay(day) {
-  ST.snowMapDay = day;
-  [1,2,3,'47'].forEach(d => {
-    document.getElementById(`snowmap-d${d}`)?.classList.toggle('active', d === day || d.toString() === day.toString());
-  });
-  const urls = {
-    1:  'https://www.wpc.ncep.noaa.gov/wwd/pwpf_d47/pwpf_medr_d1.gif',
-    2:  'https://www.wpc.ncep.noaa.gov/wwd/pwpf_d47/pwpf_medr_d2.gif',
-    3:  'https://www.wpc.ncep.noaa.gov/wwd/pwpf_d47/pwpf_medr_d3.gif',
-    47: 'https://www.wpc.ncep.noaa.gov/wwd/pwpf_d47/pwpf_medr_d4_7.gif',
-  };
-  const img = document.getElementById('snow-wpc-map');
-  if (img) {
-    img.src = '';
-    img.src = urls[day] || urls[1];
-    img.alt = `WPC Day ${day} Snowfall Probability`;
-  }
-}
 
 // ============================================================
 // SPC
@@ -1935,6 +2068,21 @@ function setSpcDay(day) {
   };
   const img = document.getElementById('spc-outlook-img');
   if (img) { img.src = ''; img.src = urls[day]; img.alt = `SPC Day ${day} Convective Outlook`; }
+}
+
+function setSpcHazardDay(day) {
+  [1,2].forEach(function(d) {
+    const btn = document.getElementById('haz-d' + d);
+    if (btn) btn.classList.toggle('active', d === day);
+  });
+  const prefix = day === 2 ? 'day2' : 'day1';
+  const ts = Date.now();
+  const tornEl = document.getElementById('haz-torn');
+  const windEl = document.getElementById('haz-wind');
+  const hailEl = document.getElementById('haz-hail');
+  if (tornEl) { tornEl.src = ''; tornEl.src = 'https://www.spc.noaa.gov/products/outlook/' + prefix + 'probotlk_torn.gif?_=' + ts; }
+  if (windEl) { windEl.src = ''; windEl.src = 'https://www.spc.noaa.gov/products/outlook/' + prefix + 'probotlk_wind.gif?_=' + ts; }
+  if (hailEl) { hailEl.src = ''; hailEl.src = 'https://www.spc.noaa.gov/products/outlook/' + prefix + 'probotlk_hail.gif?_=' + ts; }
 }
 
 function handleSpcImgError() {
@@ -2179,7 +2327,33 @@ async function refreshAll() {
 // \u2500\u2500 Start \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
 document.addEventListener('DOMContentLoaded', () => {
   initSearch();
-  refreshAll();
+  if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(
+      function(pos) {
+        CFG.lat = pos.coords.latitude;
+        CFG.lon = pos.coords.longitude;
+        CFG.locationName = 'Your Location';
+        // Try to get city name from reverse geocode
+        fetch('https://geocoding-api.open-meteo.com/v1/reverse?latitude=' + CFG.lat + '&longitude=' + CFG.lon + '&language=en')
+          .then(function(r) { return r.json(); })
+          .then(function(data) {
+            if (data.results && data.results[0]) {
+              var r = data.results[0];
+              CFG.locationName = r.name || 'Your Location';
+              CFG.timezone = r.timezone || 'America/New_York';
+              var locEl = document.getElementById('location-name');
+              if (locEl) locEl.textContent = CFG.locationName;
+            }
+          })
+          .catch(function() {});
+        refreshAll();
+      },
+      function(_err) { refreshAll(); },
+      { timeout: 5000, maximumAge: 300000 }
+    );
+  } else {
+    refreshAll();
+  }
   setInterval(refreshAll, CFG.refreshMs);
 });
 </script>
