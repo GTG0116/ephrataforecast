@@ -1,203 +1,1452 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ephrata, PA Weather Dashboard</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-        body {
-            font-family: 'Inter', sans-serif;
-            -webkit-font-smoothing: antialiased;
-            -moz-osx-font-smoothing: grayscale;
-        }
-        .fade-in {
-            animation: fadeIn 0.5s ease-in-out;
-        }
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(10px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-        /* Hide scrollbar for hourly forecast on smaller screens but allow scrolling */
-        .no-scrollbar::-webkit-scrollbar {
-            display: none;
-        }
-        .no-scrollbar {
-            -ms-overflow-style: none; /* IE and Edge */
-            scrollbar-width: none; /* Firefox */
-        }
-    </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Ephrata, PA — Weather</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
+    body {
+      font-family: 'Inter', sans-serif;
+      background: radial-gradient(ellipse at 20% 0%, #0d1b3e 0%, #0a0f1e 45%, #050810 100%);
+      min-height: 100vh;
+      color: #e2e8f0;
+      -webkit-font-smoothing: antialiased;
+    }
+ 
+    /* ── Glass card ─────────────────────────────────────────── */
+    .glass {
+      background: rgba(13, 27, 62, 0.55);
+      backdrop-filter: blur(18px);
+      -webkit-backdrop-filter: blur(18px);
+      border: 1px solid rgba(99, 143, 255, 0.12);
+      border-radius: 16px;
+    }
+    .glass-light {
+      background: rgba(20, 38, 80, 0.45);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(99, 143, 255, 0.1);
+      border-radius: 12px;
+    }
+ 
+    /* ── Scrollbar ───────────────────────────────────────────── */
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-track { background: rgba(255,255,255,0.03); }
+    ::-webkit-scrollbar-thumb { background: rgba(99,131,255,0.35); border-radius: 4px; }
+ 
+    /* ── Tab nav ─────────────────────────────────────────────── */
+    .tab-btn {
+      padding: 8px 18px;
+      border-radius: 9px;
+      font-size: 0.82rem;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+      cursor: pointer;
+      transition: all 0.2s;
+      color: rgba(148,163,184,0.85);
+      white-space: nowrap;
+      border: none;
+      background: transparent;
+    }
+    .tab-btn:hover { color: #e2e8f0; background: rgba(99,131,255,0.08); }
+    .tab-btn.active {
+      background: linear-gradient(135deg, #2563eb, #7c3aed);
+      color: #fff;
+      box-shadow: 0 4px 20px rgba(99,131,255,0.35);
+    }
+ 
+    /* ── Maps ────────────────────────────────────────────────── */
+    .map-container { height: 520px; border-radius: 14px; overflow: hidden; }
+    @media (max-width: 640px) { .map-container { height: 340px; } }
+ 
+    .leaflet-control-zoom a {
+      background: rgba(10,15,35,0.92) !important;
+      border: 1px solid rgba(99,131,255,0.25) !important;
+      color: #94a3b8 !important;
+    }
+    .leaflet-control-attribution {
+      background: rgba(10,15,35,0.75) !important;
+      color: #475569 !important;
+      font-size: 10px !important;
+    }
+    .leaflet-control-attribution a { color: #64748b !important; }
+    .leaflet-popup-content-wrapper {
+      background: rgba(10,20,50,0.95) !important;
+      border: 1px solid rgba(99,131,255,0.25) !important;
+      border-radius: 12px !important;
+      color: #e2e8f0 !important;
+    }
+    .leaflet-popup-tip { background: rgba(10,20,50,0.95) !important; }
+ 
+    /* ── Station marker ──────────────────────────────────────── */
+    .stn-pin {
+      background: rgba(5, 12, 35, 0.92);
+      border: 1.5px solid rgba(99,131,255,0.45);
+      border-radius: 9px;
+      padding: 4px 7px;
+      font-family: 'Inter', sans-serif;
+      line-height: 1.35;
+      white-space: nowrap;
+      pointer-events: none;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.5);
+    }
+ 
+    /* ── Forecast cards ──────────────────────────────────────── */
+    .day-card {
+      background: rgba(13,27,62,0.55);
+      border: 1px solid rgba(99,131,255,0.12);
+      border-radius: 16px;
+      padding: 16px 12px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      transition: transform 0.2s, box-shadow 0.2s;
+      cursor: default;
+    }
+    .day-card:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 12px 32px rgba(37,99,235,0.18);
+      border-color: rgba(99,131,255,0.28);
+    }
+ 
+    .hourly-card {
+      flex-shrink: 0;
+      width: 88px;
+      background: rgba(13,27,62,0.55);
+      border: 1px solid rgba(99,131,255,0.1);
+      border-radius: 13px;
+      padding: 10px 8px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      gap: 4px;
+      transition: border-color 0.2s;
+    }
+    .hourly-card:hover { border-color: rgba(99,131,255,0.3); }
+ 
+    /* ── Precip type badges ───────────────────────────────────── */
+    .badge-rain   { background: rgba(6,182,212,0.15);  color:#22d3ee; border:1px solid rgba(6,182,212,0.3); }
+    .badge-snow   { background: rgba(226,232,240,0.12); color:#cbd5e1; border:1px solid rgba(226,232,240,0.25); }
+    .badge-frzr   { background: rgba(125,211,252,0.13); color:#7dd3fc; border:1px solid rgba(125,211,252,0.3); }
+    .badge-mix    { background: rgba(139,92,246,0.15); color:#a78bfa; border:1px solid rgba(139,92,246,0.3); }
+    .badge-tstm   { background: rgba(250,204,21,0.13);  color:#fbbf24; border:1px solid rgba(250,204,21,0.3); }
+    .badge-none   { background: rgba(71,85,105,0.18);   color:#94a3b8; border:1px solid rgba(71,85,105,0.3); }
+ 
+    /* ── Radar legend ─────────────────────────────────────────── */
+    .dbz-bar {
+      height: 14px;
+      border-radius: 4px;
+      background: linear-gradient(to right,
+        #646464,#04e9e7,#019ff4,#0300f4,
+        #02fd02,#01c501,#008e00,#fdf802,
+        #e5bc00,#fd9500,#fd0000,#d40000,
+        #bc0000,#f800fd,#9854c6);
+      flex: 1;
+    }
+ 
+    /* ── Animations ───────────────────────────────────────────── */
+    @keyframes fadeUp {
+      from { opacity:0; transform:translateY(14px); }
+      to   { opacity:1; transform:translateY(0); }
+    }
+    .fade-up { animation: fadeUp 0.45s ease both; }
+ 
+    @keyframes pulse-soft {
+      0%,100% { opacity:1; }
+      50% { opacity:0.55; }
+    }
+    .pulse-soft { animation: pulse-soft 1.8s ease infinite; }
+ 
+    /* ── Spinner ─────────────────────────────────────────────── */
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .spinner {
+      width:36px; height:36px;
+      border:3px solid rgba(99,131,255,0.2);
+      border-top-color:#4f7bff;
+      border-radius:50%;
+      animation: spin 0.85s linear infinite;
+    }
+ 
+    /* ── SPC risk colors ─────────────────────────────────────── */
+    .risk-tstm { color:#6bc466; }
+    .risk-mrgl { color:#8ad48a; }
+    .risk-slgt { color:#f0e070; }
+    .risk-enh  { color:#f09040; }
+    .risk-mdt  { color:#e84040; }
+    .risk-high { color:#e040e0; }
+ 
+    /* ── Tab content ─────────────────────────────────────────── */
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+ 
+    /* ── Snowfall image ──────────────────────────────────────── */
+    .wx-image {
+      width: 100%;
+      border-radius: 12px;
+      border: 1px solid rgba(99,131,255,0.12);
+    }
+ 
+    /* ── Stat pill ───────────────────────────────────────────── */
+    .stat-pill {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+      padding: 12px 16px;
+      background: rgba(13,27,62,0.5);
+      border: 1px solid rgba(99,131,255,0.1);
+      border-radius: 12px;
+      min-width: 80px;
+    }
+ 
+    /* ── Responsive hourly scroll ────────────────────────────── */
+    .h-scroll { overflow-x: auto; scrollbar-width: thin; }
+ 
+    /* ── Section divider ─────────────────────────────────────── */
+    .section-title {
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: rgba(148,163,184,0.6);
+      margin-bottom: 10px;
+    }
+  </style>
 </head>
-<body class="bg-slate-50 dark:bg-slate-900 text-gray-800 dark:text-gray-200 p-4 md:p-8 min-h-screen">
-
-    <!-- Main Container -->
-    <div class="w-full max-w-4xl mx-auto space-y-8">
-
-        <!-- Header -->
-        <header class="text-center py-4">
-            <h1 class="text-4xl md:text-5xl font-bold text-slate-900 dark:text-white">Ephrata, PA Weather</h1>
-            <h2 class="text-xl md:text-2xl font-medium mt-2 text-slate-600 dark:text-slate-400">Current Forecast</h2>
-        </header>
-
-        <!-- Loading state -->
-        <div id="loading" class="flex flex-col items-center justify-center p-12 rounded-2xl bg-white dark:bg-slate-800 shadow-xl">
-            <div class="animate-pulse text-gray-500 dark:text-gray-400">
-                <svg class="w-16 h-16 mx-auto text-blue-500 dark:text-blue-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 4m0 5c-.5 1.5-1 3-1.5 4.5"/>
-                </svg>
-                <p class="mt-4 text-xl">Fetching weather data...</p>
-            </div>
+<body>
+ 
+<div id="app" class="max-w-6xl mx-auto px-4 py-6 space-y-5">
+ 
+  <!-- ══ HEADER ══════════════════════════════════════════════ -->
+  <header class="glass px-6 py-5 fade-up" style="animation-delay:0s">
+    <div class="flex flex-wrap items-start justify-between gap-4">
+      <div>
+        <h1 class="text-2xl sm:text-3xl font-extrabold tracking-tight text-white">Ephrata, PA</h1>
+        <p class="text-sm text-slate-400 mt-0.5">40.1773°N 76.1869°W · Lancaster County</p>
+      </div>
+      <div class="flex items-center gap-3">
+        <div id="hdr-current" class="text-right">
+          <div id="hdr-temp" class="text-3xl font-black text-white">--°F</div>
+          <div id="hdr-desc" class="text-sm text-slate-400 mt-0.5">Loading…</div>
         </div>
-
-        <!-- Error state -->
-        <div id="error-message" class="hidden text-center p-8 bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-700 text-red-800 dark:text-red-200 rounded-2xl shadow-lg fade-in">
-            <h3 class="text-xl font-bold">Error</h3>
-            <p class="mt-2">Failed to load weather data. Please try again later.</p>
-        </div>
-        
-        <!-- 5-Day Forecast Section -->
-        <section id="daily-forecast-section" class="hidden fade-in">
-            <h3 class="text-2xl md:text-3xl font-bold mb-4 text-slate-900 dark:text-white">5-Day Outlook</h3>
-            <div id="daily-forecast-container" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
-                <!-- Daily forecast cards will be dynamically added here -->
-            </div>
-        </section>
-
-        <!-- Hourly Forecast Section -->
-        <section id="hourly-forecast-section" class="hidden fade-in">
-            <h3 class="text-2xl md:text-3xl font-bold mb-4 text-slate-900 dark:text-white">Hourly Forecast</h3>
-            <div id="hourly-forecast-container" class="flex flex-nowrap overflow-x-auto gap-4 p-2 -m-2 no-scrollbar">
-                <!-- Hourly forecast cards will be dynamically added here -->
-            </div>
-        </section>
-
+        <button onclick="refreshAll()" id="refresh-btn"
+          class="p-2.5 rounded-xl bg-blue-600/20 border border-blue-500/25 text-blue-400 hover:bg-blue-600/35 transition-all"
+          title="Refresh">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+          </svg>
+        </button>
+      </div>
     </div>
-
-    <script>
-        const NWS_API_URL = "https://api.weather.gov";
-        const OFFICE = "CTP";
-        const GRID_X = 92;
-        const GRID_Y = 76;
-
-        const loadingElement = document.getElementById('loading');
-        const errorElement = document.getElementById('error-message');
-        const dailyContainer = document.getElementById('daily-forecast-container');
-        const dailySection = document.getElementById('daily-forecast-section');
-        const hourlyContainer = document.getElementById('hourly-forecast-container');
-        const hourlySection = document.getElementById('hourly-forecast-section');
-
-        // Function to show/hide elements
-        function showLoading() {
-            loadingElement.classList.remove('hidden');
-            errorElement.classList.add('hidden');
-            dailySection.classList.add('hidden');
-            hourlySection.classList.add('hidden');
-        }
-
-        function showContent() {
-            loadingElement.classList.add('hidden');
-            errorElement.classList.add('hidden');
-            dailySection.classList.remove('hidden');
-            hourlySection.classList.remove('hidden');
-        }
-
-        function showError(message) {
-            loadingElement.classList.add('hidden');
-            errorElement.classList.remove('hidden');
-            errorElement.querySelector('p').textContent = message;
-        }
-
-        // Helper function to format time
-        function formatTime(isoString) {
-            const date = new Date(isoString);
-            const hours = date.getHours();
-            const ampm = hours >= 12 ? 'PM' : 'AM';
-            const formattedHours = hours % 12 || 12;
-            return `${formattedHours} ${ampm}`;
-        }
-
-        // Helper function to format day
-        function formatDay(isoString) {
-            const date = new Date(isoString);
-            const today = new Date();
-            const tomorrow = new Date();
-            tomorrow.setDate(today.getDate() + 1);
-
-            if (date.toDateString() === today.toDateString()) {
-                return 'Today';
-            } else if (date.toDateString() === tomorrow.toDateString()) {
-                return 'Tomorrow';
-            } else {
-                return date.toLocaleDateString('en-US', { weekday: 'long' });
-            }
-        }
-        
-        async function fetchForecasts() {
-            showLoading();
-            dailyContainer.innerHTML = '';
-            hourlyContainer.innerHTML = '';
-
-            try {
-                // Fetch 5-day forecast
-                const dailyResponse = await fetch(`${NWS_API_URL}/gridpoints/${OFFICE}/${GRID_X},${GRID_Y}/forecast`, {
-                    headers: { 'User-Agent': 'EphrataWeatherDashboardApp, (myemail@example.com)' }
-                });
-                const dailyData = await dailyResponse.json();
-                if (!dailyResponse.ok) throw new Error(dailyData.detail || 'Failed to fetch daily forecast.');
-                
-                // Fetch hourly forecast
-                const hourlyResponse = await fetch(`${NWS_API_URL}/gridpoints/${OFFICE}/${GRID_X},${GRID_Y}/forecast/hourly`, {
-                    headers: { 'User-Agent': 'EphrataWeatherDashboardApp, (myemail@example.com)' }
-                });
-                const hourlyData = await hourlyResponse.json();
-                if (!hourlyResponse.ok) throw new Error(hourlyData.detail || 'Failed to fetch hourly forecast.');
-
-                // Render 5-day forecast
-                dailyData.properties.periods.forEach((period, index) => {
-                    // Only show first 10 periods, which should cover 5 days (day/night)
-                    if (index >= 10) return;
-
-                    const dayCard = `
-                        <div class="flex flex-col items-center text-center p-4 bg-white dark:bg-slate-800 rounded-xl shadow-md border border-slate-200 dark:border-slate-700 fade-in">
-                            <span class="text-lg font-bold">${period.name}</span>
-                            <img src="${period.icon}" alt="${period.shortForecast}" class="w-16 h-16 my-2 rounded-full">
-                            <p class="text-3xl font-extrabold text-blue-600 dark:text-blue-400">${period.temperature}°</p>
-                            <p class="mt-1 text-sm font-semibold opacity-75">${period.shortForecast}</p>
-                        </div>
-                    `;
-                    dailyContainer.innerHTML += dayCard;
-                });
-
-                // Render hourly forecast (next 24 hours)
-                hourlyData.properties.periods.slice(0, 24).forEach(period => {
-                    const time = formatTime(period.startTime);
-                    const hourlyCard = `
-                        <div class="flex flex-col items-center flex-shrink-0 text-center w-28 p-3 bg-white dark:bg-slate-800 rounded-xl shadow-md border border-slate-200 dark:border-slate-700 fade-in">
-                            <p class="text-sm font-bold">${time}</p>
-                            <img src="${period.icon}" alt="${period.shortForecast}" class="w-12 h-12 my-2 rounded-full">
-                            <p class="text-2xl font-extrabold text-blue-600 dark:text-blue-400">${period.temperature}°</p>
-                            <p class="mt-1 text-xs opacity-75">${period.shortForecast}</p>
-                            <p class="mt-1 text-xs opacity-75 font-semibold text-green-600 dark:text-green-400">${period.probabilityOfPrecipitation.value || 0}% chance</p>
-                        </div>
-                    `;
-                    hourlyContainer.innerHTML += hourlyCard;
-                });
-
-                showContent();
-
-            } catch (error) {
-                console.error("Failed to fetch weather data:", error);
-                showError(`Failed to load weather data. Details: ${error.message}`);
-            }
-        }
-
-        // Fetch forecasts when the page loads
-        document.addEventListener('DOMContentLoaded', fetchForecasts);
-        
-        // Refresh the data every 10 minutes (600000 ms)
-        setInterval(fetchForecasts, 600000);
-
-    </script>
+ 
+    <!-- Current stats strip -->
+    <div id="hdr-stats" class="flex flex-wrap gap-2 mt-4">
+      <div class="stat-pill">
+        <span class="text-xs text-slate-500 font-medium">Feels Like</span>
+        <span id="stat-feels" class="text-sm font-bold text-white">--</span>
+      </div>
+      <div class="stat-pill">
+        <span class="text-xs text-slate-500 font-medium">Wind</span>
+        <span id="stat-wind" class="text-sm font-bold text-white">--</span>
+      </div>
+      <div class="stat-pill">
+        <span class="text-xs text-slate-500 font-medium">Humidity</span>
+        <span id="stat-humid" class="text-sm font-bold text-white">--</span>
+      </div>
+      <div class="stat-pill">
+        <span class="text-xs text-slate-500 font-medium">Cloud Cover</span>
+        <span id="stat-cloud" class="text-sm font-bold text-white">--</span>
+      </div>
+      <div class="stat-pill">
+        <span class="text-xs text-slate-500 font-medium">Precip Type</span>
+        <span id="stat-ptype" class="text-sm font-bold">--</span>
+      </div>
+      <div class="stat-pill ml-auto">
+        <span class="text-xs text-slate-500 font-medium">Updated</span>
+        <span id="stat-updated" class="text-xs font-semibold text-slate-300">--</span>
+      </div>
+    </div>
+  </header>
+ 
+  <!-- ══ TAB NAV ═════════════════════════════════════════════ -->
+  <nav class="glass px-3 py-2 fade-up" style="animation-delay:0.06s">
+    <div class="flex gap-1 overflow-x-auto scrollbar-none" style="scrollbar-width:none">
+      <button class="tab-btn active" data-tab="forecast">
+        <span class="mr-1.5">📅</span>Forecast
+      </button>
+      <button class="tab-btn" data-tab="radar">
+        <span class="mr-1.5">📡</span>MRMS Radar
+      </button>
+      <button class="tab-btn" data-tab="snowfall">
+        <span class="mr-1.5">❄️</span>Snowfall
+      </button>
+      <button class="tab-btn" data-tab="spc">
+        <span class="mr-1.5">⛈️</span>SPC Outlooks
+      </button>
+      <button class="tab-btn" data-tab="conditions">
+        <span class="mr-1.5">🗺️</span>Conditions Map
+      </button>
+    </div>
+  </nav>
+ 
+  <!-- ══ GLOBAL LOADING ══════════════════════════════════════ -->
+  <div id="global-loading" class="glass flex items-center justify-center gap-4 py-10 fade-up">
+    <div class="spinner"></div>
+    <span class="text-slate-400 font-medium">Fetching weather data…</span>
+  </div>
+ 
+  <!-- ══ ERROR BANNER ════════════════════════════════════════ -->
+  <div id="global-error" class="hidden glass px-5 py-4 border-red-500/30 fade-up">
+    <p class="text-red-400 font-semibold">⚠ <span id="error-text">Error loading data.</span></p>
+  </div>
+ 
+  <!-- ═══════════════════════════════════════════════════════════
+       TAB: FORECAST
+  ════════════════════════════════════════════════════════════ -->
+  <div id="tab-forecast" class="tab-panel space-y-5">
+ 
+    <!-- 7-Day Forecast -->
+    <section class="glass p-5 fade-up" style="animation-delay:0.1s">
+      <p class="section-title">7-Day Forecast</p>
+      <div id="daily-grid" class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
+        <!-- injected -->
+      </div>
+    </section>
+ 
+    <!-- Hourly Scroll -->
+    <section class="glass p-5 fade-up" style="animation-delay:0.15s">
+      <p class="section-title">Hourly Forecast · Next 48 Hours</p>
+      <div id="hourly-scroll" class="h-scroll flex gap-2 pb-2">
+        <!-- injected -->
+      </div>
+    </section>
+ 
+    <!-- Chart -->
+    <section class="glass p-5 fade-up" style="animation-delay:0.2s">
+      <p class="section-title">Temperature &amp; Precipitation Trend (48h)</p>
+      <div style="position:relative;height:240px">
+        <canvas id="forecast-chart"></canvas>
+      </div>
+      <!-- HRRR Precip Type legend -->
+      <div class="flex flex-wrap gap-2 mt-4">
+        <span class="text-xs text-slate-500 self-center">HRRR Precip Type:</span>
+        <span class="badge-rain text-xs px-2 py-0.5 rounded-full">💧 Rain</span>
+        <span class="badge-snow text-xs px-2 py-0.5 rounded-full">❄️ Snow</span>
+        <span class="badge-frzr text-xs px-2 py-0.5 rounded-full">🧊 Freezing Rain</span>
+        <span class="badge-mix text-xs px-2 py-0.5 rounded-full">🌀 Mix</span>
+        <span class="badge-tstm text-xs px-2 py-0.5 rounded-full">⛈ Thunder</span>
+      </div>
+    </section>
+  </div>
+ 
+  <!-- ═══════════════════════════════════════════════════════════
+       TAB: RADAR
+  ════════════════════════════════════════════════════════════ -->
+  <div id="tab-radar" class="tab-panel space-y-4">
+    <section class="glass p-4 fade-up">
+      <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
+        <p class="section-title mb-0">MRMS Composite Reflectivity</p>
+        <div class="flex gap-2 flex-wrap">
+          <button onclick="setRadarProduct('nexrad-n0q-900913')" id="btn-refl"
+            class="tab-btn active text-xs px-3 py-1.5">Reflectivity</button>
+          <button onclick="setRadarProduct('q2-iak-900913')" id="btn-rate"
+            class="tab-btn text-xs px-3 py-1.5">Precip Rate</button>
+          <button onclick="refreshRadar()" class="tab-btn text-xs px-3 py-1.5">
+            🔄 Refresh
+          </button>
+        </div>
+      </div>
+      <div id="radar-map" class="map-container"></div>
+ 
+      <!-- Reflectivity legend -->
+      <div class="mt-3 flex items-center gap-3">
+        <span class="text-xs text-slate-500 shrink-0">dBZ Scale:</span>
+        <div class="dbz-bar"></div>
+        <div class="flex text-xs text-slate-500 gap-2 shrink-0">
+          <span>5</span><span>25</span><span>45</span><span>65+</span>
+        </div>
+      </div>
+ 
+      <!-- HRRR Precip Type for location -->
+      <div class="mt-3 glass-light p-3">
+        <p class="text-xs text-slate-500 font-semibold uppercase tracking-widest mb-2">
+          HRRR-Derived Precip Type · Ephrata, PA
+        </p>
+        <div id="radar-ptype-grid" class="flex flex-wrap gap-2">
+          <span class="text-xs text-slate-400 pulse-soft">Loading HRRR model data…</span>
+        </div>
+        <p class="text-xs text-slate-600 mt-2">
+          Precip type determined from HRRR model weather codes (WMO) via Open-Meteo API,
+          not from MRMS PrecipFlag, avoiding categorical flag ambiguities.
+        </p>
+      </div>
+    </section>
+  </div>
+ 
+  <!-- ═══════════════════════════════════════════════════════════
+       TAB: SNOWFALL
+  ════════════════════════════════════════════════════════════ -->
+  <div id="tab-snowfall" class="tab-panel space-y-4">
+ 
+    <!-- NOHRSC Snowfall Analysis -->
+    <section class="glass p-5 fade-up">
+      <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
+        <p class="section-title mb-0">NOHRSC Snowfall Analysis (CONUS)</p>
+        <div class="flex gap-2 flex-wrap">
+          <button onclick="setSnowPeriod(24)"  id="snow-24"  class="tab-btn active text-xs px-3 py-1.5">24h</button>
+          <button onclick="setSnowPeriod(48)"  id="snow-48"  class="tab-btn text-xs px-3 py-1.5">48h</button>
+          <button onclick="setSnowPeriod(72)"  id="snow-72"  class="tab-btn text-xs px-3 py-1.5">72h</button>
+          <button onclick="setSnowPeriod(168)" id="snow-168" class="tab-btn text-xs px-3 py-1.5">7-Day</button>
+        </div>
+      </div>
+      <div class="relative">
+        <img id="snow-nohrsc" src="" alt="NOHRSC Snowfall Analysis"
+          class="wx-image" onerror="this.src=''; this.closest('.relative').innerHTML=snowFallback()" />
+      </div>
+      <p class="text-xs text-slate-600 mt-2">
+        Source: NOAA National Operational Hydrologic Remote Sensing Center (NOHRSC).
+        Analysis updates every 6 hours at 00Z, 06Z, 12Z, 18Z.
+      </p>
+    </section>
+ 
+    <!-- WPC Snowfall Probability -->
+    <section class="glass p-5 fade-up">
+      <p class="section-title">WPC Snowfall Probability Outlooks</p>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div class="glass-light p-3">
+          <p class="text-xs font-semibold text-slate-400 mb-2 text-center">Day 1</p>
+          <img src="https://www.wpc.ncep.noaa.gov/wwd/pwpf_d47/pwpf_medr_d1.gif"
+            alt="WPC Day 1 Snow" class="wx-image"
+            onerror="this.alt='Image unavailable'; this.style.display='none'" />
+        </div>
+        <div class="glass-light p-3">
+          <p class="text-xs font-semibold text-slate-400 mb-2 text-center">Day 2</p>
+          <img src="https://www.wpc.ncep.noaa.gov/wwd/pwpf_d47/pwpf_medr_d2.gif"
+            alt="WPC Day 2 Snow" class="wx-image"
+            onerror="this.alt='Image unavailable'; this.style.display='none'" />
+        </div>
+        <div class="glass-light p-3">
+          <p class="text-xs font-semibold text-slate-400 mb-2 text-center">Day 3</p>
+          <img src="https://www.wpc.ncep.noaa.gov/wwd/pwpf_d47/pwpf_medr_d3.gif"
+            alt="WPC Day 3 Snow" class="wx-image"
+            onerror="this.alt='Image unavailable'; this.style.display='none'" />
+        </div>
+      </div>
+      <p class="text-xs text-slate-600 mt-2">
+        Source: NOAA/NWS Weather Prediction Center (WPC). Probability of ≥0.1&quot; snowfall accumulation.
+      </p>
+    </section>
+ 
+    <!-- NWS Winter Storm Outlook -->
+    <section class="glass p-5 fade-up">
+      <p class="section-title">NWS Winter Weather Outlook (Day 4–7)</p>
+      <img src="https://www.wpc.ncep.noaa.gov/wwd/wssi/day4_7_wssi.png"
+        alt="Winter Storm Severity Index" class="wx-image"
+        onerror="this.style.display='none'" />
+      <p class="text-xs text-slate-600 mt-2">
+        Source: WPC Winter Storm Severity Index (WSSI).
+      </p>
+    </section>
+  </div>
+ 
+  <!-- ═══════════════════════════════════════════════════════════
+       TAB: SPC
+  ════════════════════════════════════════════════════════════ -->
+  <div id="tab-spc" class="tab-panel space-y-4">
+ 
+    <!-- Convective Outlooks -->
+    <section class="glass p-5 fade-up">
+      <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+        <p class="section-title mb-0">SPC Convective Outlooks</p>
+        <div class="flex gap-2">
+          <button onclick="setSpcDay(1)" id="spc-d1" class="tab-btn active text-xs px-3 py-1.5">Day 1</button>
+          <button onclick="setSpcDay(2)" id="spc-d2" class="tab-btn text-xs px-3 py-1.5">Day 2</button>
+          <button onclick="setSpcDay(3)" id="spc-d3" class="tab-btn text-xs px-3 py-1.5">Day 3</button>
+        </div>
+      </div>
+ 
+      <img id="spc-outlook-img" src="https://www.spc.noaa.gov/products/outlook/day1otlk.gif"
+        alt="SPC Day 1 Convective Outlook" class="wx-image"
+        onerror="this.src=''; handleSpcImgError()" />
+ 
+      <!-- Risk Legend -->
+      <div class="mt-4 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+        <div class="glass-light p-2 text-center">
+          <div class="w-3 h-3 rounded-full bg-green-400/60 mx-auto mb-1"></div>
+          <p class="text-xs font-bold risk-tstm">TSTM</p>
+          <p class="text-xs text-slate-500 mt-0.5">Gen. Thunder</p>
+        </div>
+        <div class="glass-light p-2 text-center">
+          <div class="w-3 h-3 rounded-full bg-green-300/60 mx-auto mb-1"></div>
+          <p class="text-xs font-bold risk-mrgl">MRGL</p>
+          <p class="text-xs text-slate-500 mt-0.5">Marginal</p>
+        </div>
+        <div class="glass-light p-2 text-center">
+          <div class="w-3 h-3 rounded-full bg-yellow-300/60 mx-auto mb-1"></div>
+          <p class="text-xs font-bold risk-slgt">SLGT</p>
+          <p class="text-xs text-slate-500 mt-0.5">Slight</p>
+        </div>
+        <div class="glass-light p-2 text-center">
+          <div class="w-3 h-3 rounded-full bg-orange-400/60 mx-auto mb-1"></div>
+          <p class="text-xs font-bold risk-enh">ENH</p>
+          <p class="text-xs text-slate-500 mt-0.5">Enhanced</p>
+        </div>
+        <div class="glass-light p-2 text-center">
+          <div class="w-3 h-3 rounded-full bg-red-400/60 mx-auto mb-1"></div>
+          <p class="text-xs font-bold risk-mdt">MDT</p>
+          <p class="text-xs text-slate-500 mt-0.5">Moderate</p>
+        </div>
+        <div class="glass-light p-2 text-center">
+          <div class="w-3 h-3 rounded-full bg-fuchsia-400/60 mx-auto mb-1"></div>
+          <p class="text-xs font-bold risk-high">HIGH</p>
+          <p class="text-xs text-slate-500 mt-0.5">High</p>
+        </div>
+      </div>
+    </section>
+ 
+    <!-- Tornado / Wind / Hail breakdown (Day 1) -->
+    <section class="glass p-5 fade-up">
+      <p class="section-title">SPC Hazard Probability Maps (Day 1)</p>
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div class="glass-light p-3">
+          <p class="text-xs font-semibold text-slate-400 mb-2 text-center">🌪 Tornado</p>
+          <img src="https://www.spc.noaa.gov/products/outlook/day1probotlk_torn.gif"
+            alt="Tornado Prob" class="wx-image" onerror="this.style.display='none'" />
+        </div>
+        <div class="glass-light p-3">
+          <p class="text-xs font-semibold text-slate-400 mb-2 text-center">💨 Damaging Wind</p>
+          <img src="https://www.spc.noaa.gov/products/outlook/day1probotlk_wind.gif"
+            alt="Wind Prob" class="wx-image" onerror="this.style.display='none'" />
+        </div>
+        <div class="glass-light p-3">
+          <p class="text-xs font-semibold text-slate-400 mb-2 text-center">🌩 Large Hail</p>
+          <img src="https://www.spc.noaa.gov/products/outlook/day1probotlk_hail.gif"
+            alt="Hail Prob" class="wx-image" onerror="this.style.display='none'" />
+        </div>
+      </div>
+    </section>
+ 
+    <!-- Fire Weather -->
+    <section class="glass p-5 fade-up">
+      <p class="section-title">SPC Fire Weather Outlook</p>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div class="glass-light p-3">
+          <p class="text-xs font-semibold text-slate-400 mb-2 text-center">Day 1</p>
+          <img src="https://www.spc.noaa.gov/products/fire_wx/fwdy1.gif"
+            alt="Fire Day 1" class="wx-image" onerror="this.style.display='none'" />
+        </div>
+        <div class="glass-light p-3">
+          <p class="text-xs font-semibold text-slate-400 mb-2 text-center">Day 2</p>
+          <img src="https://www.spc.noaa.gov/products/fire_wx/fwdy2.gif"
+            alt="Fire Day 2" class="wx-image" onerror="this.style.display='none'" />
+        </div>
+      </div>
+      <p class="text-xs text-slate-600 mt-2">Source: NOAA Storm Prediction Center (SPC). Updates daily.</p>
+    </section>
+  </div>
+ 
+  <!-- ═══════════════════════════════════════════════════════════
+       TAB: CONDITIONS MAP
+  ════════════════════════════════════════════════════════════ -->
+  <div id="tab-conditions" class="tab-panel space-y-4">
+ 
+    <section class="glass p-4 fade-up">
+      <p class="section-title">Current Surface Observations · Central PA Region</p>
+      <div id="conditions-map" class="map-container"></div>
+      <div class="mt-3 flex flex-wrap gap-3 text-xs text-slate-500">
+        <span>🌡 Temperature</span>
+        <span>💨 Wind speed &amp; direction</span>
+        <span>☁ Cloud cover</span>
+        <span>Sources: NWS ASOS station observations</span>
+      </div>
+    </section>
+ 
+    <!-- Station Table -->
+    <section class="glass p-5 fade-up">
+      <p class="section-title">Station Observations</p>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="text-xs text-slate-500 border-b border-slate-700/50">
+              <th class="text-left pb-2 font-semibold">Station</th>
+              <th class="text-right pb-2 font-semibold">Temp</th>
+              <th class="text-right pb-2 font-semibold">Wind</th>
+              <th class="text-right pb-2 font-semibold">Humidity</th>
+              <th class="text-right pb-2 font-semibold">Sky</th>
+              <th class="text-right pb-2 font-semibold">Weather</th>
+            </tr>
+          </thead>
+          <tbody id="station-table-body">
+            <tr><td colspan="6" class="py-4 text-center text-slate-500 pulse-soft">Loading stations…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+ 
+  <!-- ── Footer ──────────────────────────────────────────────── -->
+  <footer class="text-center text-xs text-slate-700 py-2 fade-up" style="animation-delay:0.3s">
+    Data: NWS · Open-Meteo HRRR · IEM/NOAA MRMS · NOHRSC · WPC · SPC ·
+    <span id="footer-updated"></span>
+  </footer>
+ 
+</div><!-- #app -->
+ 
+<script>
+// ============================================================
+// CONFIG
+// ============================================================
+const CFG = {
+  lat: 40.1773,
+  lon: -76.1869,
+  nwsOffice: 'CTP',
+  nwsX: 92,
+  nwsY: 76,
+  userAgent: '(EphrataWeatherApp, weather@ephrata.example)',
+  refreshMs: 600_000,
+};
+ 
+// ============================================================
+// STATE
+// ============================================================
+let ST = {
+  openMeteo: null,
+  nwsForecast: null,
+  nwsHourly: null,
+  stations: [],
+  radarProduct: 'nexrad-n0q-900913',
+  snowPeriod: 24,
+  spcDay: 1,
+  maps: { radar: null, conditions: null },
+  layers: { radar: null },
+  chart: null,
+  mapsInited: { radar: false, conditions: false },
+};
+ 
+// ============================================================
+// UTILITY
+// ============================================================
+function cToF(c) { return c == null ? null : (c * 9/5) + 32; }
+function mpsToMph(v) { return v == null ? null : v * 2.23694; }
+function kmhToMph(v) { return v == null ? null : v * 0.621371; }
+function round1(v) { return Math.round(v * 10) / 10; }
+ 
+function tempColor(f) {
+  if (f == null) return '#94a3b8';
+  if (f >= 95) return '#ef4444';
+  if (f >= 85) return '#f97316';
+  if (f >= 75) return '#f59e0b';
+  if (f >= 65) return '#84cc16';
+  if (f >= 55) return '#22d3ee';
+  if (f >= 45) return '#60a5fa';
+  if (f >= 32) return '#818cf8';
+  return '#c4b5fd';
+}
+ 
+function windDirArrow(deg) {
+  if (deg == null) return '–';
+  const dirs = ['N','NE','E','SE','S','SW','W','NW'];
+  return dirs[Math.round(deg / 45) % 8];
+}
+ 
+function skyEmoji(amount) {
+  const m = { CLR:'☀️', SKC:'☀️', FEW:'🌤', SCT:'⛅', BKN:'🌥', OVC:'☁️' };
+  return m[amount] || '🌥';
+}
+ 
+// WMO weather code → precip type string
+function wmoToPrecipType(code) {
+  if (code == null) return 'none';
+  if ([95,96,99].includes(code)) return 'tstm';
+  if ([66,67].includes(code)) return 'frzr';
+  if ([56,57].includes(code)) return 'frzr';
+  if (code >= 71 && code <= 77) return 'snow';
+  if ([85,86].includes(code)) return 'snow';
+  if (code >= 61 && code <= 65) return 'rain';
+  if (code >= 51 && code <= 55) return 'rain';
+  if (code >= 80 && code <= 82) return 'rain';
+  if (code >= 1 && code <= 3) return 'none';
+  if (code === 0) return 'none';
+  return 'none';
+}
+ 
+function precipTypeLabel(type) {
+  return { rain:'💧 Rain', snow:'❄️ Snow', frzr:'🧊 Freezing Rain', mix:'🌀 Mix',
+           tstm:'⛈ Thunder', none:'None' }[type] || 'None';
+}
+ 
+function precipTypeBadgeClass(type) {
+  return { rain:'badge-rain', snow:'badge-snow', frzr:'badge-frzr',
+           mix:'badge-mix', tstm:'badge-tstm', none:'badge-none' }[type] || 'badge-none';
+}
+ 
+function wmoDesc(code) {
+  if (code == null) return '—';
+  const m = {
+    0:'Clear', 1:'Mainly Clear', 2:'Partly Cloudy', 3:'Overcast',
+    45:'Fog', 48:'Icy Fog',
+    51:'Light Drizzle', 53:'Drizzle', 55:'Heavy Drizzle',
+    56:'Lt Frz Drizzle', 57:'Hvy Frz Drizzle',
+    61:'Light Rain', 63:'Rain', 65:'Heavy Rain',
+    66:'Lt Frz Rain', 67:'Hvy Frz Rain',
+    71:'Light Snow', 73:'Snow', 75:'Heavy Snow', 77:'Snow Grains',
+    80:'Light Showers', 81:'Showers', 82:'Heavy Showers',
+    85:'Snow Showers', 86:'Heavy Snow Showers',
+    95:'Thunderstorm', 96:'Tstm + Hail', 99:'Tstm + Heavy Hail',
+  };
+  return m[code] || `Code ${code}`;
+}
+ 
+function fmtTime(iso) {
+  const d = new Date(iso);
+  const h = d.getHours();
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  return `${h%12||12}${ampm}`;
+}
+ 
+function fmtDay(iso) {
+  const d = new Date(iso);
+  const today = new Date();
+  const tom = new Date(today); tom.setDate(today.getDate()+1);
+  if (d.toDateString() === today.toDateString()) return 'Today';
+  if (d.toDateString() === tom.toDateString()) return 'Tomorrow';
+  return d.toLocaleDateString('en-US',{weekday:'short'});
+}
+ 
+function nwsIconUrl(url, size='small') {
+  // upgrade to larger icon
+  if (!url) return '';
+  return url.replace(/\?size=\w+/, '') + '?size=' + size;
+}
+ 
+// ============================================================
+// NOHRSC URL
+// ============================================================
+function nohrscUrl(hours) {
+  // Construct latest NOHRSC snowfall analysis URL
+  // NOHRSC runs at 00Z,06Z,12Z,18Z – find most recent
+  const now = new Date();
+  const utcH = now.getUTCHours();
+  const runH = Math.floor(utcH / 6) * 6;
+  const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), runH));
+  const yyyy = d.getUTCFullYear();
+  const mm = String(d.getUTCMonth()+1).padStart(2,'0');
+  const dd = String(d.getUTCDate()).padStart(2,'0');
+  const hh = String(d.getUTCHours()).padStart(2,'0');
+  const key = hours === 168 ? '10day' : `${hours}h`;
+  return `https://www.nohrsc.noaa.gov/snowfall/data/${yyyy}${mm}/sfav3_CONUS_${key}_${yyyy}${mm}${dd}${hh}.gif`;
+}
+ 
+function snowFallback() {
+  return `<div class="glass-light p-6 text-center text-slate-500 text-sm">
+    <p class="mb-2">⚠️ Snowfall image unavailable for the current analysis time.</p>
+    <a href="https://www.nohrsc.noaa.gov/snowfall/" target="_blank"
+       class="text-blue-400 underline">View NOHRSC Snowfall Analysis →</a>
+  </div>`;
+}
+ 
+// ============================================================
+// API FETCHING
+// ============================================================
+async function fetchNWSForecast() {
+  const url = `https://api.weather.gov/gridpoints/${CFG.nwsOffice}/${CFG.nwsX},${CFG.nwsY}/forecast`;
+  const r = await fetch(url, { headers:{'User-Agent': CFG.userAgent} });
+  if (!r.ok) throw new Error(`NWS forecast: ${r.status}`);
+  const d = await r.json();
+  return d.properties.periods;
+}
+ 
+async function fetchNWSHourly() {
+  const url = `https://api.weather.gov/gridpoints/${CFG.nwsOffice}/${CFG.nwsX},${CFG.nwsY}/forecast/hourly`;
+  const r = await fetch(url, { headers:{'User-Agent': CFG.userAgent} });
+  if (!r.ok) throw new Error(`NWS hourly: ${r.status}`);
+  const d = await r.json();
+  return d.properties.periods;
+}
+ 
+async function fetchOpenMeteo() {
+  const params = new URLSearchParams({
+    latitude: CFG.lat,
+    longitude: CFG.lon,
+    current: 'temperature_2m,apparent_temperature,weather_code,wind_speed_10m,wind_direction_10m,relative_humidity_2m,cloud_cover,precipitation',
+    hourly: 'temperature_2m,weather_code,precipitation,rain,snowfall,cloud_cover,wind_speed_10m,wind_direction_10m,visibility,cape',
+    temperature_unit: 'fahrenheit',
+    wind_speed_unit: 'mph',
+    precipitation_unit: 'inch',
+    timezone: 'America/New_York',
+    forecast_days: 7,
+  });
+  const r = await fetch(`https://api.open-meteo.com/v1/forecast?${params}`);
+  if (!r.ok) throw new Error(`Open-Meteo: ${r.status}`);
+  return r.json();
+}
+ 
+async function fetchStations() {
+  // Get stations associated with the CTP grid point
+  const url = `https://api.weather.gov/gridpoints/${CFG.nwsOffice}/${CFG.nwsX},${CFG.nwsY}/stations`;
+  const r = await fetch(url, { headers:{'User-Agent': CFG.userAgent} });
+  if (!r.ok) return [];
+  const d = await r.json();
+  const features = (d.features || []).slice(0, 22);
+ 
+  const results = await Promise.allSettled(
+    features.map(f =>
+      fetch(`${f.id}/observations/latest`, { headers:{'User-Agent': CFG.userAgent} })
+        .then(res => res.ok ? res.json() : null)
+        .catch(() => null)
+    )
+  );
+ 
+  return results
+    .map((res, i) => {
+      if (res.status !== 'fulfilled' || !res.value) return null;
+      const obs = res.value;
+      const p = obs.properties;
+      const f = features[i];
+      if (!p || p.temperature?.value == null) return null;
+ 
+      // Wind speed: NWS returns km/h
+      const windKmh = p.windSpeed?.value ?? null;
+      const windMph = windKmh != null ? windKmh * 0.621371 : null;
+ 
+      return {
+        id: f.properties.stationIdentifier,
+        name: f.properties.name,
+        lat: f.geometry.coordinates[1],
+        lon: f.geometry.coordinates[0],
+        tempF: cToF(p.temperature.value),
+        windMph,
+        windDir: p.windDirection?.value ?? null,
+        humidity: p.relativeHumidity?.value ?? null,
+        sky: p.cloudLayers?.[0]?.amount ?? 'CLR',
+        textDescription: p.textDescription ?? '—',
+        timestamp: p.timestamp,
+      };
+    })
+    .filter(Boolean);
+}
+ 
+// ============================================================
+// RENDER HEADER (uses Open-Meteo current)
+// ============================================================
+function renderHeader(om) {
+  const c = om.current;
+  const tempF = c.temperature_2m;
+  const ptype = wmoToPrecipType(c.weather_code);
+  const desc = wmoDesc(c.weather_code);
+ 
+  document.getElementById('hdr-temp').textContent = `${Math.round(tempF)}°F`;
+  document.getElementById('hdr-temp').style.color = tempColor(tempF);
+  document.getElementById('hdr-desc').textContent = desc;
+  document.getElementById('stat-feels').textContent = `${Math.round(c.apparent_temperature)}°F`;
+  document.getElementById('stat-wind').textContent =
+    `${Math.round(c.wind_speed_10m)} mph ${windDirArrow(c.wind_direction_10m)}`;
+  document.getElementById('stat-humid').textContent = `${Math.round(c.relative_humidity_2m)}%`;
+  document.getElementById('stat-cloud').textContent = `${Math.round(c.cloud_cover)}%`;
+ 
+  const ptEl = document.getElementById('stat-ptype');
+  ptEl.textContent = precipTypeLabel(ptype);
+  ptEl.className = `text-sm font-bold px-2 py-0.5 rounded-full ${precipTypeBadgeClass(ptype)}`;
+ 
+  const now = new Date();
+  const upd = now.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
+  document.getElementById('stat-updated').textContent = upd;
+  document.getElementById('footer-updated').textContent = `Updated ${upd}`;
+}
+ 
+// ============================================================
+// RENDER 7-DAY FORECAST (NWS periods – pair day/night)
+// ============================================================
+function renderDailyForecast(periods) {
+  // NWS periods alternate day/night. Group into days.
+  const days = [];
+  let i = 0;
+  while (i < periods.length && days.length < 7) {
+    const p = periods[i];
+    if (p.isDaytime) {
+      const night = periods[i+1];
+      days.push({ day: p, night });
+      i += 2;
+    } else {
+      // starts at night
+      days.push({ day: null, night: p });
+      i++;
+    }
+  }
+ 
+  const grid = document.getElementById('daily-grid');
+  grid.innerHTML = days.map((pair, idx) => {
+    const main = pair.day || pair.night;
+    const dayLabel = idx === 0 ? 'Today' : fmtDay(main.startTime);
+    const hiTemp = pair.day?.temperature ?? '—';
+    const loTemp = pair.night?.temperature ?? '—';
+    const hiColor = tempColor(pair.day?.temperature);
+    const loColor = tempColor(pair.night?.temperature);
+    const icon = nwsIconUrl(main.icon, 'medium');
+    const pop = main.probabilityOfPrecipitation?.value ?? 0;
+ 
+    return `<div class="day-card fade-up" style="animation-delay:${idx*0.04}s">
+      <p class="text-xs font-bold text-slate-400 uppercase tracking-wider">${dayLabel}</p>
+      <img src="${icon}" alt="${main.shortForecast}" class="w-14 h-14 my-2 rounded-xl" />
+      <div class="flex gap-2 items-baseline">
+        <span class="text-xl font-extrabold" style="color:${hiColor}">${hiTemp}°</span>
+        ${loTemp !== '—' ? `<span class="text-sm font-semibold" style="color:${loColor}">${loTemp}°</span>` : ''}
+      </div>
+      <p class="text-xs text-slate-400 mt-1 leading-tight">${main.shortForecast}</p>
+      ${pop > 0 ? `<p class="text-xs mt-1 text-cyan-400 font-semibold">💧 ${pop}%</p>` : ''}
+    </div>`;
+  }).join('');
+}
+ 
+// ============================================================
+// RENDER HOURLY SCROLL (NWS next 48 periods)
+// ============================================================
+function renderHourlyScroll(periods, omHourly) {
+  const next48 = periods.slice(0, 48);
+ 
+  // Build Open-Meteo hourly lookup by ISO hour
+  const omLookup = {};
+  if (omHourly) {
+    omHourly.time.forEach((t, idx) => {
+      const key = t.slice(0, 13); // 'YYYY-MM-DDTHH'
+      omLookup[key] = {
+        ptype: wmoToPrecipType(omHourly.weather_code[idx]),
+        rain: omHourly.rain[idx],
+        snow: omHourly.snowfall[idx],
+        precip: omHourly.precipitation[idx],
+      };
+    });
+  }
+ 
+  const container = document.getElementById('hourly-scroll');
+  container.innerHTML = next48.map((p, idx) => {
+    const time = fmtTime(p.startTime);
+    const tempF = p.temperature;
+    const tc = tempColor(tempF);
+    const pop = p.probabilityOfPrecipitation?.value ?? 0;
+    const icon = nwsIconUrl(p.icon, 'small');
+ 
+    // Resolve precip type from Open-Meteo HRRR
+    const omKey = p.startTime.slice(0, 13);
+    const om = omLookup[omKey] || {};
+    const ptype = om.ptype || 'none';
+    const badgeCls = precipTypeBadgeClass(ptype);
+    const ptLabel = ptype !== 'none' ? precipTypeLabel(ptype) : '';
+ 
+    return `<div class="hourly-card fade-up" style="animation-delay:${Math.min(idx,12)*0.02}s">
+      <p class="text-xs font-bold text-slate-400">${time}</p>
+      <img src="${icon}" alt="${p.shortForecast}" class="w-10 h-10 rounded-lg" />
+      <p class="text-base font-extrabold" style="color:${tc}">${tempF}°</p>
+      ${pop > 0 ? `<p class="text-xs text-cyan-400 font-semibold">${pop}%</p>` : ''}
+      ${ptLabel ? `<span class="text-xs px-1.5 py-0.5 rounded-full ${badgeCls} leading-tight">${ptLabel}</span>` : ''}
+    </div>`;
+  }).join('');
+}
+ 
+// ============================================================
+// RENDER CHART (Chart.js – 48h temp + precip)
+// ============================================================
+function renderForecastChart(om) {
+  const ctx = document.getElementById('forecast-chart');
+  if (!ctx || !om) return;
+  if (ST.chart) { ST.chart.destroy(); ST.chart = null; }
+ 
+  const h = om.hourly;
+  const slice = 48;
+  const labels = h.time.slice(0, slice).map(t => {
+    const d = new Date(t);
+    return d.getHours() === 0
+      ? d.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'})
+      : fmtTime(t);
+  });
+ 
+  const temps = h.temperature_2m.slice(0, slice);
+  const precips = h.precipitation.slice(0, slice);
+  const codes = h.weather_code.slice(0, slice);
+ 
+  // Color each precip bar by type
+  const precipColors = precips.map((v, i) => {
+    if (v <= 0) return 'rgba(0,0,0,0)';
+    const pt = wmoToPrecipType(codes[i]);
+    const clrs = {
+      rain: 'rgba(6,182,212,0.6)',
+      snow: 'rgba(148,163,184,0.65)',
+      frzr: 'rgba(125,211,252,0.65)',
+      mix:  'rgba(139,92,246,0.65)',
+      tstm: 'rgba(250,204,21,0.65)',
+      none: 'rgba(99,131,255,0.3)',
+    };
+    return clrs[pt] || 'rgba(99,131,255,0.4)';
+  });
+ 
+  ST.chart = new Chart(ctx, {
+    data: {
+      labels,
+      datasets: [
+        {
+          type: 'line',
+          label: 'Temperature (°F)',
+          data: temps,
+          borderColor: 'rgba(249,115,22,0.85)',
+          backgroundColor: 'rgba(249,115,22,0.06)',
+          borderWidth: 2,
+          pointRadius: 0,
+          pointHoverRadius: 4,
+          tension: 0.4,
+          fill: true,
+          yAxisID: 'yTemp',
+          order: 1,
+        },
+        {
+          type: 'bar',
+          label: 'Precipitation (in)',
+          data: precips,
+          backgroundColor: precipColors,
+          borderRadius: 3,
+          yAxisID: 'yPrecip',
+          order: 2,
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { labels: { color: '#94a3b8', font: { family: 'Inter', size: 11 } } },
+        tooltip: {
+          backgroundColor: 'rgba(8,12,35,0.92)',
+          borderColor: 'rgba(99,131,255,0.25)',
+          borderWidth: 1,
+          titleColor: '#e2e8f0',
+          bodyColor: '#94a3b8',
+          padding: 10,
+          callbacks: {
+            label: ctx => {
+              if (ctx.dataset.yAxisID === 'yTemp')
+                return ` ${Math.round(ctx.parsed.y)}°F`;
+              return ctx.parsed.y > 0 ? ` ${ctx.parsed.y.toFixed(2)}"` : null;
+            },
+          },
+        },
+      },
+      scales: {
+        x: {
+          ticks: {
+            color: '#475569',
+            font: { size: 10 },
+            maxRotation: 0,
+            maxTicksLimit: 12,
+          },
+          grid: { color: 'rgba(255,255,255,0.04)' },
+        },
+        yTemp: {
+          position: 'left',
+          ticks: { color: '#f97316', font: { size: 11 }, callback: v => `${v}°` },
+          grid: { color: 'rgba(255,255,255,0.04)' },
+        },
+        yPrecip: {
+          position: 'right',
+          min: 0,
+          ticks: {
+            color: '#22d3ee',
+            font: { size: 10 },
+            callback: v => v > 0 ? `${v}"` : '',
+          },
+          grid: { display: false },
+        },
+      },
+    },
+  });
+}
+ 
+// ============================================================
+// RADAR MAP (Leaflet + IEM MRMS tiles)
+// ============================================================
+function initRadarMap() {
+  if (ST.mapsInited.radar) return;
+  ST.mapsInited.radar = true;
+ 
+  const map = L.map('radar-map', {
+    center: [CFG.lat, CFG.lon],
+    zoom: 7,
+    zoomControl: true,
+  });
+  ST.maps.radar = map;
+ 
+  // Dark base layer (CartoDB dark matter)
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    attribution: '© OpenStreetMap contributors © CARTO',
+    subdomains: 'abcd',
+    maxZoom: 19,
+  }).addTo(map);
+ 
+  // MRMS / NEXRAD tiles (IEM)
+  ST.layers.radar = L.tileLayer(
+    `https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/${ST.radarProduct}/{z}/{x}/{y}.png`,
+    { opacity: 0.75, attribution: 'IEM MRMS/NEXRAD', maxZoom: 19 }
+  ).addTo(map);
+ 
+  // US States overlay
+  L.tileLayer(
+    'https://mesonet.agron.iastate.edu/c/tile.py/1.0.0/usstates/{z}/{x}/{y}.png',
+    { opacity: 0.6, attribution: 'IEM', maxZoom: 19 }
+  ).addTo(map);
+ 
+  // Ephrata marker
+  L.circleMarker([CFG.lat, CFG.lon], {
+    radius: 8,
+    color: '#4f7bff',
+    fillColor: '#2563eb',
+    fillOpacity: 0.85,
+    weight: 2,
+  }).addTo(map).bindPopup('<b style="color:#e2e8f0">Ephrata, PA</b><br><span style="color:#94a3b8">40.18°N 76.19°W</span>');
+ 
+  // Timestamp watermark
+  const ts = L.control({ position: 'bottomleft' });
+  ts.onAdd = () => {
+    const d = document.createElement('div');
+    d.style.cssText = 'background:rgba(5,10,25,0.7);color:#64748b;padding:3px 7px;font-size:10px;border-radius:5px;font-family:Inter,sans-serif';
+    d.id = 'radar-timestamp';
+    d.innerHTML = 'MRMS data via Iowa Environmental Mesonet';
+    return d;
+  };
+  ts.addTo(map);
+}
+ 
+function setRadarProduct(product) {
+  ST.radarProduct = product;
+  // Update button states
+  document.getElementById('btn-refl').classList.toggle('active', product === 'nexrad-n0q-900913');
+  document.getElementById('btn-rate').classList.toggle('active', product === 'q2-iak-900913');
+ 
+  if (ST.layers.radar && ST.maps.radar) {
+    ST.maps.radar.removeLayer(ST.layers.radar);
+    ST.layers.radar = L.tileLayer(
+      `https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/${product}/{z}/{x}/{y}.png`,
+      { opacity: 0.75, attribution: 'IEM MRMS', maxZoom: 19 }
+    ).addTo(ST.maps.radar);
+  }
+}
+ 
+function refreshRadar() {
+  if (!ST.layers.radar || !ST.maps.radar) return;
+  const cur = ST.radarProduct;
+  ST.maps.radar.removeLayer(ST.layers.radar);
+  ST.layers.radar = L.tileLayer(
+    `https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/${cur}/{z}/{x}/{y}.png?_=${Date.now()}`,
+    { opacity: 0.75, attribution: 'IEM MRMS', maxZoom: 19 }
+  ).addTo(ST.maps.radar);
+}
+ 
+// ============================================================
+// RADAR PRECIP TYPE GRID (HRRR next 12 hours)
+// ============================================================
+function renderRadarPtypeGrid(om) {
+  const container = document.getElementById('radar-ptype-grid');
+  if (!om) { container.innerHTML = '<span class="text-xs text-red-400">HRRR data unavailable</span>'; return; }
+ 
+  const now = new Date();
+  const h = om.hourly;
+  const pills = [];
+ 
+  for (let i = 0; i < h.time.length && pills.length < 12; i++) {
+    const t = new Date(h.time[i]);
+    if (t < now) continue;
+    const ptype = wmoToPrecipType(h.weather_code[i]);
+    const label = precipTypeLabel(ptype);
+    const badge = precipTypeBadgeClass(ptype);
+    const precip = h.precipitation[i] ?? 0;
+    pills.push(`
+      <div class="glass-light px-3 py-2 text-center min-w-16">
+        <p class="text-xs font-bold text-slate-400">${fmtTime(h.time[i])}</p>
+        <span class="text-xs px-1.5 py-0.5 rounded-full ${badge}">${label}</span>
+        ${precip > 0 ? `<p class="text-xs text-cyan-400 mt-1">${precip.toFixed(2)}"</p>` : ''}
+      </div>`);
+  }
+ 
+  container.innerHTML = pills.length
+    ? `<p class="text-xs text-slate-500 w-full mb-1">Next 12 hours:</p>` + pills.join('')
+    : '<span class="text-xs text-slate-500">No precipitation expected</span>';
+}
+ 
+// ============================================================
+// SNOWFALL
+// ============================================================
+function setSnowPeriod(hours) {
+  ST.snowPeriod = hours;
+  ['24','48','72','168'].forEach(h => {
+    document.getElementById(`snow-${h}`)?.classList.toggle('active', parseInt(h) === hours);
+  });
+  const img = document.getElementById('snow-nohrsc');
+  if (img) {
+    img.src = '';
+    img.src = nohrscUrl(hours);
+    img.alt = `NOHRSC ${hours}h Snowfall Analysis`;
+    img.onerror = function() {
+      // Try previous 6-hour window
+      const now = new Date();
+      const utcH = now.getUTCHours();
+      const prevRunH = (Math.floor(utcH / 6) * 6 - 6 + 24) % 24;
+      const d2 = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), prevRunH));
+      if (utcH < 6) d2.setUTCDate(d2.getUTCDate() - 1);
+      const yyyy = d2.getUTCFullYear();
+      const mm = String(d2.getUTCMonth()+1).padStart(2,'0');
+      const dd2 = String(d2.getUTCDate()).padStart(2,'0');
+      const hh = String(d2.getUTCHours()).padStart(2,'0');
+      const key = hours === 168 ? '10day' : `${hours}h`;
+      this.onerror = () => { this.closest('.relative').innerHTML = snowFallback(); };
+      this.src = `https://www.nohrsc.noaa.gov/snowfall/data/${yyyy}${mm}/sfav3_CONUS_${key}_${yyyy}${mm}${dd2}${hh}.gif`;
+    };
+  }
+}
+ 
+// ============================================================
+// SPC
+// ============================================================
+function setSpcDay(day) {
+  ST.spcDay = day;
+  [1,2,3].forEach(d => {
+    document.getElementById(`spc-d${d}`)?.classList.toggle('active', d === day);
+  });
+  const urls = {
+    1: 'https://www.spc.noaa.gov/products/outlook/day1otlk.gif',
+    2: 'https://www.spc.noaa.gov/products/outlook/day2otlk.gif',
+    3: 'https://www.spc.noaa.gov/products/outlook/day3otlk.gif',
+  };
+  const img = document.getElementById('spc-outlook-img');
+  if (img) {
+    img.src = '';
+    img.src = urls[day];
+    img.alt = `SPC Day ${day} Convective Outlook`;
+  }
+}
+ 
+function handleSpcImgError() {
+  const img = document.getElementById('spc-outlook-img');
+  if (!img) return;
+  img.insertAdjacentHTML('afterend',
+    `<div class="glass-light p-6 text-center text-slate-500 text-sm mt-2">
+      <p class="mb-2">⚠️ SPC outlook image unavailable.</p>
+      <a href="https://www.spc.noaa.gov/products/outlook/" target="_blank"
+         class="text-blue-400 underline">View SPC Outlooks directly →</a>
+    </div>`);
+}
+ 
+// ============================================================
+// CONDITIONS MAP (Leaflet + NWS station obs)
+// ============================================================
+function initConditionsMap(stations) {
+  const map = L.map('conditions-map', {
+    center: [CFG.lat, CFG.lon],
+    zoom: 7,
+    zoomControl: true,
+  });
+  ST.maps.conditions = map;
+  ST.mapsInited.conditions = true;
+ 
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    attribution: '© OpenStreetMap contributors © CARTO',
+    subdomains: 'abcd',
+    maxZoom: 19,
+  }).addTo(map);
+ 
+  // Ephrata star marker
+  const eph = L.divIcon({
+    html: `<div class="stn-pin" style="border-color:#f59e0b;font-size:12px">
+             <span style="color:#fbbf24;font-weight:800">★ Ephrata</span>
+           </div>`,
+    className: '',
+    iconAnchor: [35, 15],
+  });
+  L.marker([CFG.lat, CFG.lon], { icon: eph }).addTo(map);
+ 
+  // Station markers
+  stations.forEach(s => {
+    const tc = tempColor(s.tempF);
+    const skyE = skyEmoji(s.sky);
+    const wd = windDirArrow(s.windDir);
+    const ws = s.windMph != null ? `${Math.round(s.windMph)}` : '–';
+    const icon = L.divIcon({
+      html: `<div class="stn-pin">
+               <div style="color:${tc};font-weight:800;font-size:13px">${Math.round(s.tempF)}°F</div>
+               <div style="color:#94a3b8;font-size:10px">${skyE} ${wd} ${ws}mph</div>
+             </div>`,
+      className: '',
+      iconAnchor: [35, 25],
+    });
+    L.marker([s.lat, s.lon], { icon }).addTo(map)
+      .bindPopup(`
+        <div style="font-family:Inter,sans-serif">
+          <p style="font-weight:700;font-size:14px;margin:0 0 6px">${s.name} (${s.id})</p>
+          <table style="font-size:12px;color:#94a3b8;border-collapse:collapse">
+            <tr><td style="padding:2px 8px 2px 0">Temperature</td>
+                <td style="color:${tc};font-weight:700">${Math.round(s.tempF)}°F</td></tr>
+            <tr><td style="padding:2px 8px 2px 0">Wind</td>
+                <td>${ws} mph ${wd}</td></tr>
+            <tr><td style="padding:2px 8px 2px 0">Humidity</td>
+                <td>${s.humidity != null ? Math.round(s.humidity)+'%' : '—'}</td></tr>
+            <tr><td style="padding:2px 8px 2px 0">Sky</td>
+                <td>${skyE} ${s.sky}</td></tr>
+            <tr><td style="padding:2px 8px 2px 0">Conditions</td>
+                <td>${s.textDescription}</td></tr>
+          </table>
+        </div>`);
+  });
+ 
+  // Temperature color legend
+  const legend = L.control({ position: 'bottomright' });
+  legend.onAdd = () => {
+    const d = document.createElement('div');
+    d.style.cssText = 'background:rgba(5,10,25,0.88);border:1px solid rgba(99,131,255,0.2);border-radius:10px;padding:10px 12px;font-family:Inter,sans-serif;font-size:11px;color:#94a3b8';
+    d.innerHTML = `<p style="font-weight:700;margin:0 0 6px;color:#e2e8f0">Temperature</p>
+      ${[['≥90°','#ef4444'],['80°','#f97316'],['70°','#f59e0b'],
+         ['60°','#84cc16'],['50°','#22d3ee'],['40°','#60a5fa'],
+         ['32°','#818cf8'],['<32°','#c4b5fd']].map(([l,c]) =>
+        `<div style="display:flex;align-items:center;gap:6px;margin:2px 0">
+           <span style="width:10px;height:10px;background:${c};border-radius:50%;display:inline-block"></span>
+           <span>${l}</span></div>`).join('')}`;
+    return d;
+  };
+  legend.addTo(map);
+}
+ 
+// ============================================================
+// RENDER STATION TABLE
+// ============================================================
+function renderStationTable(stations) {
+  const tbody = document.getElementById('station-table-body');
+  if (!stations.length) {
+    tbody.innerHTML = '<tr><td colspan="6" class="py-4 text-center text-slate-500">No station data available</td></tr>';
+    return;
+  }
+ 
+  tbody.innerHTML = stations.map(s => {
+    const tc = tempColor(s.tempF);
+    const wd = windDirArrow(s.windDir);
+    const ws = s.windMph != null ? `${Math.round(s.windMph)} mph ${wd}` : '—';
+    return `<tr class="border-b border-slate-800/60 hover:bg-slate-800/20 transition-colors">
+      <td class="py-2.5 pr-4">
+        <p class="font-semibold text-white text-xs">${s.id}</p>
+        <p class="text-xs text-slate-500 leading-tight">${s.name}</p>
+      </td>
+      <td class="py-2.5 text-right font-bold text-sm" style="color:${tc}">${Math.round(s.tempF)}°F</td>
+      <td class="py-2.5 text-right text-sm text-slate-300">${ws}</td>
+      <td class="py-2.5 text-right text-sm text-slate-400">${s.humidity != null ? Math.round(s.humidity)+'%' : '—'}</td>
+      <td class="py-2.5 text-right text-sm">${skyEmoji(s.sky)} ${s.sky}</td>
+      <td class="py-2.5 text-right text-xs text-slate-400">${s.textDescription}</td>
+    </tr>`;
+  }).join('');
+}
+ 
+// ============================================================
+// TAB SWITCHING
+// ============================================================
+function switchTab(tab) {
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+  document.getElementById(`tab-${tab}`)?.classList.add('active');
+ 
+  // Lazy-init maps on first visit
+  if (tab === 'radar' && !ST.mapsInited.radar) {
+    setTimeout(initRadarMap, 50);
+  }
+  if (tab === 'conditions' && !ST.mapsInited.conditions && ST.stations.length) {
+    setTimeout(() => initConditionsMap(ST.stations), 50);
+  }
+ 
+  // Re-init snowfall image on first visit
+  if (tab === 'snowfall') {
+    const img = document.getElementById('snow-nohrsc');
+    if (img && !img.src) setSnowPeriod(ST.snowPeriod);
+  }
+}
+ 
+// Wire up tab buttons
+document.querySelectorAll('.tab-btn[data-tab]').forEach(btn => {
+  btn.addEventListener('click', () => switchTab(btn.dataset.tab));
+});
+ 
+// ============================================================
+// MAIN INIT
+// ============================================================
+async function refreshAll() {
+  const btn = document.getElementById('refresh-btn');
+  if (btn) btn.classList.add('animate-spin');
+ 
+  try {
+    const [omData, nwsForecast, nwsHourly, stations] = await Promise.allSettled([
+      fetchOpenMeteo(),
+      fetchNWSForecast(),
+      fetchNWSHourly(),
+      fetchStations(),
+    ]);
+ 
+    // Open-Meteo
+    if (omData.status === 'fulfilled') {
+      ST.openMeteo = omData.value;
+      renderHeader(ST.openMeteo);
+      renderForecastChart(ST.openMeteo);
+      renderRadarPtypeGrid(ST.openMeteo);
+      // Re-render hourly with HRRR overlay if NWS is ready
+    }
+ 
+    // NWS Forecast
+    if (nwsForecast.status === 'fulfilled') {
+      ST.nwsForecast = nwsForecast.value;
+      renderDailyForecast(ST.nwsForecast);
+    }
+ 
+    // NWS Hourly
+    if (nwsHourly.status === 'fulfilled') {
+      ST.nwsHourly = nwsHourly.value;
+      renderHourlyScroll(ST.nwsHourly, ST.openMeteo?.hourly ?? null);
+    }
+ 
+    // Stations
+    if (stations.status === 'fulfilled') {
+      ST.stations = stations.value;
+      renderStationTable(ST.stations);
+      if (ST.mapsInited.conditions) {
+        // already init'd – just rebuild markers
+        ST.maps.conditions.eachLayer(l => { if (l instanceof L.Marker) l.remove(); });
+        initConditionsMap(ST.stations);
+      }
+    }
+ 
+    // Hide loading, show content
+    document.getElementById('global-loading').classList.add('hidden');
+    document.getElementById('tab-forecast').classList.add('active');
+ 
+    // Init snowfall image
+    setSnowPeriod(ST.snowPeriod);
+ 
+  } catch (err) {
+    console.error(err);
+    document.getElementById('global-loading').classList.add('hidden');
+    document.getElementById('global-error').classList.remove('hidden');
+    document.getElementById('error-text').textContent = err.message;
+  } finally {
+    if (btn) btn.classList.remove('animate-spin');
+  }
+}
+ 
+// ── Start ────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  refreshAll();
+  setInterval(refreshAll, CFG.refreshMs);
+});
+</script>
 </body>
 </html>
